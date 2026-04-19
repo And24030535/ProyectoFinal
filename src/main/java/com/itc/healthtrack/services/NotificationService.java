@@ -23,8 +23,7 @@ public class NotificationService {
      * @param message The notification message body.
      */
     public void notifyPatient(User patient, String message) {
-        sendNotification("PATIENT", patient.getEmail(),
-                patient.getFirstName() + " " + patient.getLastName(), message);
+        sendNotification("PATIENT", patient.getEmail(), getFullName(patient), message);
     }
 
     /**
@@ -34,8 +33,17 @@ public class NotificationService {
      * @param message The notification message body.
      */
     public void notifyDoctor(User doctor, String message) {
-        sendNotification("DOCTOR", doctor.getEmail(),
-                "Dr. " + doctor.getFirstName() + " " + doctor.getLastName(), message);
+        sendNotification("DOCTOR", doctor.getEmail(), "Dr. " + getFullName(doctor), message);
+    }
+
+    /**
+     * Returns the full display name for a user.
+     *
+     * @param user The user whose name to format.
+     * @return First name + " " + last name.
+     */
+    private String getFullName(User user) {
+        return user.getFirstName() + " " + user.getLastName();
     }
 
     /**

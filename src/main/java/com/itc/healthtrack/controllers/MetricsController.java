@@ -81,9 +81,12 @@ public class MetricsController {
             return new SimpleStringProperty((sys != null && dia != null) ? sys + "/" + dia : "-");
         });
 
-        colHeartRate.setCellValueFactory(cellData -> new SimpleStringProperty(String.valueOf(cellData.getValue().getHeartRate())));
-        colGlucose.setCellValueFactory(cellData -> new SimpleStringProperty(String.valueOf(cellData.getValue().getGlucoseLevel())));
-        colWeight.setCellValueFactory(cellData -> new SimpleStringProperty(String.valueOf(cellData.getValue().getWeight())));
+        colHeartRate.setCellValueFactory(cellData -> new SimpleStringProperty(
+                cellData.getValue().getHeartRate() != null ? String.valueOf(cellData.getValue().getHeartRate()) : "-"));
+        colGlucose.setCellValueFactory(cellData -> new SimpleStringProperty(
+                cellData.getValue().getGlucoseLevel() != null ? String.valueOf(cellData.getValue().getGlucoseLevel()) : "-"));
+        colWeight.setCellValueFactory(cellData -> new SimpleStringProperty(
+                cellData.getValue().getWeight() != null ? String.valueOf(cellData.getValue().getWeight()) : "-"));
 
         tableMetrics.setItems(metricsObservableList);
 

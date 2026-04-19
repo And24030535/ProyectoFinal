@@ -102,10 +102,13 @@ public class RecommendationsController {
     }
 
     /**
-     * Evaluates recent metrics for a worsening trend across consecutive readings.
+     * Evaluates whether the patient's last three consecutive readings show a persistent
+     * risk pattern (e.g., three hypertensive or three hyperglycemic readings in a row).
+     * A minimum of three readings is required because a single abnormal value may be an
+     * isolated anomaly, whereas three consecutive critical values indicate a genuine trend.
      *
      * @param history Ordered list of patient metrics (newest first).
-     * @return true if a risk progression pattern is detected.
+     * @return true if a sustained risk progression pattern is detected across the last 3 readings.
      */
     private boolean hasRiskProgression(List<Metric> history) {
         if (history == null || history.size() < 3) return false;
@@ -141,12 +144,13 @@ public class RecommendationsController {
         report.append("Última evaluación: ").append(latest.getTimestamp().toDate().toString()).append("\n");
         report.append("Condición climática actual: ").append(weatherData).append("\n\n");
 
-        boolean isRainy = weatherData.toLowerCase().contains("rain")
-                || weatherData.toLowerCase().contains("drizzle")
-                || weatherData.toLowerCase().contains("lluv");
-        boolean isCold = weatherData.toLowerCase().contains("snow")
-                || weatherData.toLowerCase().contains("cold")
-                || weatherData.toLowerCase().contains("frio");
+        String weatherLower = weatherData.toLowerCase();
+        boolean isRainy = weatherLower.contains("rain")
+                || weatherLower.contains("drizzle")
+                || weatherLower.contains("lluv");
+        boolean isCold = weatherLower.contains("snow")
+                || weatherLower.contains("cold")
+                || weatherLower.contains("frio");
 
         // Blood pressure rules
         if (latest.getSystolic() != null && latest.getDiastolic() != null) {
