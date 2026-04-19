@@ -32,7 +32,13 @@ public class RecommendationsController {
 
     public void initData(User doctor) {
         this.loggedInDoctor = doctor;
-        loadPatients();
+        if ("patient".equals(doctor.getRole())) {
+            comboPatients.getItems().add(doctor);
+            comboPatients.getSelectionModel().selectFirst();
+            comboPatients.setDisable(true);
+        } else {
+            loadPatients();
+        }
     }
 
     private void loadPatients() {
