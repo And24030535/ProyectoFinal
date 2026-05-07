@@ -14,6 +14,7 @@
 <?import javafx.scene.text.Font?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
+<?import javafx.scene.control.DatePicker?>
 <StackPane style="-fx-background-color: #121212;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.itc.healthtrack.controllers.RegisterController">
 
     <VBox alignment="CENTER" maxWidth="480.0" spacing="20.0" styleClass="panel-secundario" style="-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.6), 20, 0, 0, 5); -fx-padding: 40; -fx-background-radius: 10; -fx-border-radius: 10;">
@@ -57,7 +58,7 @@
             <ComboBox fx:id="comboGender" promptText="Seleccionar" maxWidth="Infinity" GridPane.columnIndex="1" GridPane.rowIndex="6" styleClass="form-control"/>
 
             <Label text="Fecha Nac.:" textFill="#cccccc" GridPane.columnIndex="0" GridPane.rowIndex="7"/>
-            <TextField fx:id="txtBirthDate" promptText="AAAA-MM-DD" GridPane.columnIndex="1" GridPane.rowIndex="7" styleClass="form-control"/>
+            <DatePicker fx:id="dpBirthDate" promptText="Fecha de nacimiento" GridPane.columnIndex="1" GridPane.rowIndex="7" styleClass="form-control" maxWidth="Infinity"/>
 
             <Label text="Altura (m):" textFill="#cccccc" GridPane.columnIndex="0" GridPane.rowIndex="8"/>
             <TextField fx:id="txtHeight" promptText="Ej: 1.75" GridPane.columnIndex="1" GridPane.rowIndex="8" styleClass="form-control"/>

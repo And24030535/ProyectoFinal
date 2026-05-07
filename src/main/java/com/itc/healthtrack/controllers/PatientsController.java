@@ -10,6 +10,7 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -19,9 +20,10 @@ import java.util.List;
 public class PatientsController {
 
     // Componentes del formulario
-    @FXML private TextField txtFirstName, txtLastName, txtEmail, txtBirthDate, txtHeight;
+    @FXML private TextField txtFirstName, txtLastName, txtEmail, txtHeight;
     @FXML private PasswordField txtPassword;
     @FXML private ComboBox<String> comboGender;
+    @FXML private DatePicker dpBirthDate;
 
     // Componentes de la tabla
     @FXML private TableView<User> tablePatients;
@@ -35,9 +37,7 @@ public class PatientsController {
     private User loggedInDoctor;
     private User selectedPatient = null;
 
-    /**
-     * Metodo de inicializacion que recibe el medico actualmente logueado.
-     */
+    // Metodo de inicializacion que recibe el medico actualmente logueado
     public void initData(User doctor) {
         this.loggedInDoctor = doctor;
         setupTable();
@@ -48,10 +48,9 @@ public class PatientsController {
         loadPatients();
     }
 
-    /**
-     * Configura las columnas de la tabla para que coincidan con los atributos del modelo User.
-     */
+    //Carga los pacientes desde Firestore y llena el formulario al seleccionar uno
     private void setupTable() {
+        // Vincula cada columna con su propiedad correspondiente del modelo User
         colFirstName.setCellValueFactory(new PropertyValueFactory<>("firstName"));
         colLastName.setCellValueFactory(new PropertyValueFactory<>("lastName"));
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
@@ -59,7 +58,7 @@ public class PatientsController {
 
         tablePatients.setItems(patientsObservableList);
 
-        // Evento: Cuando se selecciona un paciente de la tabla, llena el formulario
+        // Cuando se selecciona un paciente de la tabla, llena el formulario
         tablePatients.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
             if (newSelection != null) {
                 selectedPatient = newSelection;
@@ -68,13 +67,13 @@ public class PatientsController {
         });
     }
 
-    /**
-     * Carga los pacientes del medico desde Firestore en un hilo secundario.
-     */
+    //Carga los pacientes del medico desde Firestore en un hilo secundario
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> list = patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
+                List<User> list = "admin".equals(loggedInDoctor.getRole())
+                        ? patientDAO.getAllPatients()
+                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
                 Platform.runLater(() -> {
                     patientsObservableList.clear();
                     patientsObservableList.addAll(list);
@@ -94,7 +93,7 @@ public class PatientsController {
                 newPatient.setFirstName(txtFirstName.getText());
                 newPatient.setLastName(txtLastName.getText());
                 newPatient.setEmail(txtEmail.getText());
-                newPatient.setBirthDate(txtBirthDate.getText());
+                newPatient.setBirthDate(dpBirthDate.getValue() != null ? dpBirthDate.getValue().toString() : null);
                 newPatient.setGender(comboGender.getValue());
                 newPatient.setHeight(Double.parseDouble(txtHeight.getText()));
 
@@ -122,7 +121,7 @@ public class PatientsController {
                 selectedPatient.setFirstName(txtFirstName.getText());
                 selectedPatient.setLastName(txtLastName.getText());
                 selectedPatient.setEmail(txtEmail.getText());
-                selectedPatient.setBirthDate(txtBirthDate.getText());
+                selectedPatient.setBirthDate(dpBirthDate.getValue() != null ? dpBirthDate.getValue().toString() : null);
                 selectedPatient.setGender(comboGender.getValue());
                 selectedPatient.setHeight(Double.parseDouble(txtHeight.getText()));
 
@@ -143,6 +142,7 @@ public class PatientsController {
         }
     }
 
+    //Elimina el paciente seleccionado de la base de datos
     @FXML
     protected void onDeletePatient() {
         if (selectedPatient != null) {
@@ -160,12 +160,13 @@ public class PatientsController {
         }
     }
 
+    //Limpia todos los campos del formulario y deselecciona el paciente
     @FXML
     protected void onClearForm() {
         txtFirstName.clear();
         txtLastName.clear();
         txtEmail.clear();
-        txtBirthDate.clear();
+        dpBirthDate.setValue(null);
         comboGender.setValue(null);
         txtHeight.clear();
         txtPassword.clear();
@@ -174,13 +175,15 @@ public class PatientsController {
         tablePatients.getSelectionModel().clearSelection();
     }
 
+    /*Llena los campos del formulario con los datos del paciente seleccionado
+     Se usa para editar un paciente existente*/
     private void fillForm(User p) {
         txtFirstName.setText(p.getFirstName());
         txtLastName.setText(p.getLastName());
         txtEmail.setText(p.getEmail());
-        txtBirthDate.setText(p.getBirthDate() != null ? p.getBirthDate() : "");
+        dpBirthDate.setValue(p.getBirthDate() != null ? LocalDate.parse(p.getBirthDate()) : null);
         comboGender.setValue(p.getGender());
         txtHeight.setText(p.getHeight() != null ? String.valueOf(p.getHeight()) : "");
-        txtPassword.clear(); // Never pre-fill passwords
+        txtPassword.clear();
     }
 }

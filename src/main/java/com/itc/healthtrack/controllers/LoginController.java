@@ -1,5 +1,6 @@
 package com.itc.healthtrack.controllers;
 
+import com.itc.healthtrack.dao.PatientDAO;
 import com.itc.healthtrack.dao.UserDAO;
 import com.itc.healthtrack.models.User;
 import javafx.application.Platform;
@@ -16,22 +17,25 @@ import javafx.stage.Stage;
 import org.kordamp.bootstrapfx.BootstrapFX;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Controlador encargado de la autenticacion de usuarios.
  */
 public class LoginController {
 
-    @FXML private TextField emailField;
-    @FXML private PasswordField passwordField;
-    @FXML private Label errorLabel;
-    @FXML private Button loginButton;
+    // Elementos de interfaz
+    @FXML private TextField emailField;         // Campo de email
+    @FXML private PasswordField passwordField;   // Campo de contraseña
+    @FXML private Label errorLabel;              // Etiqueta para mostrar errores
+    @FXML private Button loginButton;            // Botón de inicio de sesión
 
+    //Acceso a datos
     private final UserDAO userDAO = new UserDAO();
+    private final PatientDAO patientDAO = new PatientDAO();
 
-    /**
-     * Navigates to the self-registration screen.
-     */
+    //Navega a la pantalla de crear nueva cuenta
+
     @FXML
     protected void onGoToRegister(ActionEvent event) {
         try {
@@ -45,13 +49,11 @@ public class LoginController {
             stage.centerOnScreen();
         } catch (IOException e) {
             e.printStackTrace();
-            showError("Error al cargar la pantalla de registro.");
+            showError("Error al cargar la pantalla de registro");
         }
     }
 
-    /**
-     * Procesa el intento de inicio de sesion.
-     */
+    // Procesa el intento de inicio de sesion
     @FXML
     protected void onLoginButtonClick(ActionEvent event) {
         String email = emailField.getText();
@@ -69,34 +71,53 @@ public class LoginController {
         // Ejecucion en hilo secundario para no congelar la UI
         new Thread(() -> {
             try {
-                // Consulta a Firestore con correo y password
+                // Consulta a Firestore con correo y contraseña
                 User currentUser = userDAO.authenticateUser(email, password);
 
                 Platform.runLater(() -> {
                     if (currentUser != null) {
-                        loadDashboard(event, currentUser);
+                        // Asignar doctor automáticamente si es paciente sin asignación
+                        if ("patient".equals(currentUser.getRole()) &&
+                            (currentUser.getAssignedDoctorId() == null || currentUser.getAssignedDoctorId().isEmpty())) {
+
+                            new Thread(() -> {
+                                try {
+                                    List<User> doctors = patientDAO.getAllDoctors();
+                                    if (!doctors.isEmpty()) {
+                                        User randomDoctor = doctors.get((int) (Math.random() * doctors.size()));
+                                        patientDAO.assignDoctorToPatient(currentUser.getUid(), randomDoctor.getUid());
+                                        System.out.println("Paciente " + currentUser.getFirstName() + " asignado al doctor: " + randomDoctor.getFirstName() + " " + randomDoctor.getLastName());
+                                    }
+                                } catch (Exception e) {
+                                    System.out.println("Error al asignar doctor automáticamente: " + e.getMessage());
+                                }
+                                // Después de intentar asignar, cargar el dashboard
+                                Platform.runLater(() -> loadDashboard(event, currentUser));
+                            }).start();
+                        } else {
+                            loadDashboard(event, currentUser);
+                        }
                     } else {
-                        showError("Credenciales inválidas o error de conexión.");
+                        showError("Credenciales inválidas");
                         loginButton.setDisable(false);
                     }
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {
-                    showError("Error al conectar con la base de datos.");
+                    showError("Error al conectar con la base de datos");
                     loginButton.setDisable(false);
                 });
             }
         }).start();
     }
 
+    //Muestra un mensaje de error en la interfaz.
     private void showError(String message) {
         errorLabel.setText(message);
         errorLabel.setVisible(true);
     }
 
-    /**
-     * Configura y muestra la escena del Dashboard inyectando los estilos CSS.
-     */
+    //Configura y muestra la escena del Dashboard inyectando los estilos CSS
     private void loadDashboard(ActionEvent event, User user) {
         try {
             FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("/com/itc/healthtrack/views/dashboard-view.fxml"));

@@ -35,18 +35,21 @@ import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Controlador encargado de exportar el historial clinico a formatos de reporte (PDF).
- */
+//Controlador encargado de exportar el historial clinico a formatos de reporte (PDF)
 public class ReportsController {
 
-    @FXML private ComboBox<User> comboPatients;
-    @FXML private Label lblStatus;
+    // Elementos de interfaz
+    @FXML private ComboBox<User> comboPatients;  // ComboBox para seleccionar el paciente
+    @FXML private Label lblStatus;               // Etiqueta para mensajes de estado/progreso
 
+    // Acceso a datos
     private final PatientDAO patientDAO = new PatientDAO();
     private final MetricDAO metricDAO = new MetricDAO();
     private User loggedInDoctor;
 
+    /*Inicializa el controlador con los datos del usuario logeado
+     Si es un paciente, muestra solo sus propios datos
+     Si es médico/admin, carga la lista de pacientes*/
     public void initData(User doctor) {
         this.loggedInDoctor = doctor;
         if ("patient".equals(doctor.getRole())) {
@@ -58,13 +61,13 @@ public class ReportsController {
         }
     }
 
-    /**
-     * Carga la lista de pacientes en el menu desplegable.
-     */
+    // Carga la lista de pacientes en el menu desplegable
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> patients = patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
+                List<User> patients = "admin".equals(loggedInDoctor.getRole())
+                        ? patientDAO.getAllPatients()
+                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
                 Platform.runLater(() -> {
                     comboPatients.setItems(FXCollections.observableArrayList(patients));
                 });
@@ -84,7 +87,7 @@ public class ReportsController {
             return;
         }
 
-        // 1. Abrir la ventana del sistema operativo para elegir donde guardar el archivo
+        // Abre un cuadro de diálogo del sistema operativo para elegir dónde guardar el archivo
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Guardar Reporte Clínico");
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivos PDF", "*.pdf"));
@@ -96,7 +99,7 @@ public class ReportsController {
         Stage stage = (Stage) comboPatients.getScene().getWindow();
         File file = fileChooser.showSaveDialog(stage);
 
-        // 2. Si el usuario eligio una ruta y le dio a "Guardar"
+        // Si el usuario eligió una ruta y presionó "Guardar"
         if (file != null) {
             lblStatus.setText("Descargando métricas...");
             lblStatus.setTextFill(javafx.scene.paint.Color.WHITE);
@@ -147,10 +150,8 @@ public class ReportsController {
         }
     }
 
-    /**
-     * Utiliza la libreria iText para dibujar los elementos dentro del PDF.
-     * Incluye una tabla con el historial y, si estan disponibles, graficos embebidos.
-     */
+    /*Utiliza la libreria iText para dibujar los elementos dentro del PDF
+     Incluye una tabla con el historial y, si estan disponibles, graficos*/
     private void generatePDF(String destPath, User patient, List<Metric> history,
                               List<byte[]> chartImages) throws Exception {
         // Inicializar el escritor de PDF
@@ -212,15 +213,13 @@ public class ReportsController {
         document.close();
     }
 
-    /**
-     * Creates a blood-pressure LineChart and a metric-averages BarChart from the patient
-     * history and returns them as PNG byte arrays ready to embed in iText.
-     * Must be called on the JavaFX Application Thread.
-     */
+    /*Crea un gráfico de línea para presión arterial y un gráfico de barras para promedios.
+     Convierte los gráficos a imágenes PNG para incrustarlos en el PDF
+     Debe ser llamado desde el hilo de aplicación de JavaFX*/
     private List<byte[]> buildChartImages(List<Metric> history) {
         List<byte[]> images = new ArrayList<>();
 
-        // --- Blood Pressure Line Chart ---
+        // Gráfico presión arterial
         try {
             CategoryAxis xAxis = new CategoryAxis();
             NumberAxis yAxis = new NumberAxis();
@@ -229,11 +228,13 @@ public class ReportsController {
             lineChart.setAnimated(false);
             lineChart.setPrefSize(620, 280);
 
+            //Descripciones sistolica y diastolica
             XYChart.Series<String, Number> systolicSeries = new XYChart.Series<>();
             systolicSeries.setName("Sistólica");
             XYChart.Series<String, Number> diastolicSeries = new XYChart.Series<>();
             diastolicSeries.setName("Diastólica");
 
+            // Llenar las descripciones con datos (en orden inverso para mostrar antiguos a la izquierda)
             for (int i = history.size() - 1; i >= 0; i--) {
                 Metric m = history.get(i);
                 if (m.getSystolic() != null && m.getDiastolic() != null && m.getTimestamp() != null) {
@@ -248,10 +249,10 @@ public class ReportsController {
             if (lineBytes != null) images.add(lineBytes);
 
         } catch (Exception e) {
-            System.err.println("Error generating line chart: " + e.getMessage());
+            System.err.println("Error generando gráfico de línea: " + e.getMessage());
         }
 
-        // --- Metric Averages Bar Chart ---
+        // Gráfico de barras para promedios
         try {
             CategoryAxis xAxis2 = new CategoryAxis();
             NumberAxis yAxis2 = new NumberAxis();
@@ -263,6 +264,7 @@ public class ReportsController {
             XYChart.Series<String, Number> avgSeries = new XYChart.Series<>();
             avgSeries.setName("Promedio");
 
+            // Calcular promedios de cada métrica
             int sysTotal = 0, diaTotal = 0, hrTotal = 0;
             double glTotal = 0, weightTotal = 0;
             int sysCount = 0, diaCount = 0, hrCount = 0, glCount = 0, weightCount = 0;
@@ -275,6 +277,7 @@ public class ReportsController {
                 if (m.getWeight() != null)       { weightTotal += m.getWeight();      weightCount++; }
             }
 
+            // Agregar los promedios calculados al gráfico
             if (sysCount > 0)    avgSeries.getData().add(new XYChart.Data<>("Sistólica",   sysTotal    / (double) sysCount));
             if (diaCount > 0)    avgSeries.getData().add(new XYChart.Data<>("Diastólica",  diaTotal    / (double) diaCount));
             if (hrCount > 0)     avgSeries.getData().add(new XYChart.Data<>("F.Cardíaca",  hrTotal     / (double) hrCount));
@@ -286,21 +289,20 @@ public class ReportsController {
             if (barBytes != null) images.add(barBytes);
 
         } catch (Exception e) {
-            System.err.println("Error generating bar chart: " + e.getMessage());
+            System.err.println("Error generando gráfico de barras: " + e.getMessage());
         }
 
         return images;
     }
 
-    /**
-     * Renders a JavaFX node into a temporary Scene so CSS is applied,
-     * takes a snapshot, and returns the result as a PNG byte array.
-     * Must be called on the JavaFX Application Thread.
-     */
+    /*
+     Renderiza un nodo de JavaFX en una escena temporal para aplicar CSS,
+     toma una captura de pantalla y la retorna como un array de bytes PNG
+     Debe ser llamado desde el hilo de aplicación de JavaFX*/
     private byte[] snapshotNodeToBytes(javafx.scene.Node node, double width, double height) {
         try {
             StackPane wrapper = new StackPane(node);
-            // Placing node inside a Scene triggers CSS layout
+            // Colocar el nodo dentro de una escena activa la aplicación de CSS
             javafx.scene.Scene tempScene = new javafx.scene.Scene(wrapper, width, height);
             node.applyCss();
             wrapper.layout();
@@ -308,16 +310,19 @@ public class ReportsController {
             SnapshotParameters params = new SnapshotParameters();
             WritableImage writableImage = node.snapshot(params, null);
 
+            // Convertir la imagen de JavaFX a BufferedImage de Swing
             BufferedImage bufferedImage = SwingFXUtils.fromFXImage(writableImage, null);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(bufferedImage, "png", baos);
             return baos.toByteArray();
 
         } catch (Exception e) {
-            System.err.println("Error capturing chart snapshot: " + e.getMessage());
+            System.err.println("Error capturando snapshot del gráfico: " + e.getMessage());
             return null;
         }
     }
+
+    //Exporta el historial clínico a un archivo Excel (.xlsx) con formato
     @FXML
     protected void onExportExcel() {
         User selectedPatient = comboPatients.getValue();
@@ -328,6 +333,7 @@ public class ReportsController {
             return;
         }
 
+        // Abrir cuadro de diálogo para elegir dónde guardar el archivo
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Guardar Reporte Clínico en Excel");
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivos Excel", "*.xlsx"));
@@ -340,6 +346,7 @@ public class ReportsController {
             lblStatus.setText("Generando archivo Excel...");
             lblStatus.setTextFill(javafx.scene.paint.Color.WHITE);
 
+            // Generar el archivo en hilo de fondo
             new Thread(() -> {
                 try {
                     List<Metric> history = metricDAO.getMetricsByPatient(selectedPatient.getUid());
@@ -360,9 +367,8 @@ public class ReportsController {
         }
     }
 
-    /**
-     * Utiliza la libreria Apache POI para construir y exportar la hoja de calculo.
-     */
+    /*Utiliza la librería Apache POI para construir y exportar un archivo Excel
+    Incluye información del paciente, médico y tabla con el historial de métricas  */
     private void generateExcel(String destPath, User patient, List<Metric> history) throws Exception {
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("Historial Clínico");
@@ -380,6 +386,7 @@ public class ReportsController {
         Row patientRow = sheet.createRow(1);
         patientRow.createCell(0).setCellValue("Paciente: " + patient.getFirstName() + " " + patient.getLastName());
 
+        // Información del médico si está disponible
         if (loggedInDoctor != null
                 && ("doctor".equals(loggedInDoctor.getRole()) || "admin".equals(loggedInDoctor.getRole()))) {
             Row doctorRow = sheet.createRow(2);

@@ -28,7 +28,7 @@
             <TextField fx:id="txtEmail" GridPane.columnIndex="1" GridPane.rowIndex="2" styleClass="form-control"/>
 
             <Label text="Fecha de Nac.:" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
-            <TextField fx:id="txtBirthDate" promptText="AAAA-MM-DD" GridPane.columnIndex="1" GridPane.rowIndex="3" styleClass="form-control"/>
+            <DatePicker fx:id="dpBirthDate" promptText="Fecha de nacimiento" GridPane.columnIndex="1" GridPane.rowIndex="3" styleClass="form-control" maxWidth="Infinity"/>
 
             <Label text="Género:" GridPane.columnIndex="0" GridPane.rowIndex="4"/>
             <ComboBox fx:id="comboGender" promptText="Seleccionar" GridPane.columnIndex="1" GridPane.rowIndex="4" styleClass="form-control"/>

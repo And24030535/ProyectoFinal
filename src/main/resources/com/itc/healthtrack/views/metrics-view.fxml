@@ -15,33 +15,31 @@
     </padding>
 
     <VBox spacing="15.0" prefWidth="350.0" styleClass="panel-secundario" style="-fx-padding: 20;">
-        <Label text="Registrar Métricas Médicas">
-            <font>
-                <Font name="System Bold" size="18.0"/>
-            </font>
-        </Label>
+        <Label text="Registrar Métricas Médicas"
+                style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
 
         <VBox spacing="8.0">
-            <Label text="Seleccionar Paciente:" />
+            <Label text="Seleccionar Paciente:"
+                   style="-fx-font-size: 13px; -fx-font-weight: bold;"/>
             <ComboBox fx:id="comboPatients" maxWidth="Infinity" promptText="Elige un paciente..." />
         </VBox>
 
         <Separator style="-fx-background-color: #333333;" />
 
         <GridPane hgap="10" vgap="12">
-            <Label text="Sistólica (mmHg):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+            <Label text="Sistólica (mmHg):" textFill="WHITE" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
             <TextField fx:id="txtSystolic" GridPane.columnIndex="1" GridPane.rowIndex="0" styleClass="form-control"/>
 
-            <Label text="Diastólica (mmHg):" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+            <Label text="Diastólica (mmHg):" textFill="WHITE" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
             <TextField fx:id="txtDiastolic" GridPane.columnIndex="1" GridPane.rowIndex="1" styleClass="form-control"/>
 
-            <Label text="F. Cardíaca (lpm):" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+            <Label text="F. Cardíaca (lpm):" textFill="WHITE" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
             <TextField fx:id="txtHeartRate" GridPane.columnIndex="1" GridPane.rowIndex="2" styleClass="form-control"/>
 
-            <Label text="Glucosa (mg/dL):" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+            <Label text="Glucosa (mg/dL):" textFill="WHITE" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
             <TextField fx:id="txtGlucose" GridPane.columnIndex="1" GridPane.rowIndex="3" styleClass="form-control"/>
 
-            <Label text="Peso (kg):" GridPane.columnIndex="0" GridPane.rowIndex="4"/>
+            <Label text="Peso (kg):" textFill="WHITE" GridPane.columnIndex="0" GridPane.rowIndex="4"/>
             <TextField fx:id="txtWeight" GridPane.columnIndex="1" GridPane.rowIndex="4" styleClass="form-control"/>
         </GridPane>
 
@@ -57,18 +55,16 @@
 
     <VBox spacing="15.0" HBox.hgrow="ALWAYS">
         <HBox alignment="CENTER_LEFT" spacing="20.0">
-            <Label text="Historial y Tendencias">
-                <font><Font name="System Bold" size="18.0"/></font>
-            </Label>
+            <Label text="Historial y Tendencias"
+                    style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
             <Region HBox.hgrow="ALWAYS" />
             <Label text="Filtrar por:" textFill="#cccccc"/>
             <ComboBox fx:id="comboTimeFilter" prefWidth="150.0" styleClass="form-control"/>
         </HBox>
 
         <HBox spacing="15.0" styleClass="panel-secundario" style="-fx-padding: 10;">
-            <Label text="Promedios del periodo:" textFill="#cccccc">
-                <font><Font name="System Bold" size="12.0"/></font>
-            </Label>
+            <Label text="Promedios del periodo:" textFill="#cccccc"
+                    style="-fx-font-size: 12px; -fx-font-weight: bold;"/>
             <Label fx:id="lblAvgBP" text="PA: --/-- mmHg" textFill="#4caf50" />
             <Label fx:id="lblAvgGlucose" text="Glucosa: -- mg/dL" textFill="#2196f3" />
             <Label fx:id="lblAvgWeight" text="Peso: -- kg" textFill="#ff9800" />

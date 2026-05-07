@@ -37,6 +37,14 @@ dependencies {
     // Firebase para base de datos
     implementation("com.google.firebase:firebase-admin:9.2.0")
 
+    // Logging - SLF4J con Logback como implementación
+    implementation("org.slf4j:slf4j-api:2.0.9")
+    implementation("ch.qos.logback:logback-classic:1.4.11")
+
+    // Log4j2 core (requerido por algunas dependencias)
+    implementation("org.apache.logging.log4j:log4j-core:2.21.1")
+    implementation("org.apache.logging.log4j:log4j-api:2.21.1")
+
     // Librerias de diseno visual integradas para la interfaz
     implementation("org.kordamp.bootstrapfx:bootstrapfx-core:0.4.0")
     implementation("org.kordamp.ikonli:ikonli-javafx:12.3.1")

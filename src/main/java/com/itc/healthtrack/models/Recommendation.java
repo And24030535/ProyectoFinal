@@ -2,19 +2,20 @@ package com.itc.healthtrack.models;
 
 import com.google.cloud.Timestamp;
 
-/**
- * Representa una alerta o recomendacion medica enviada al paciente.
- */
+//Representa una recomendación o alerta médica enviada a un paciente
 public class Recommendation {
     private String id;
     private String patientId;
     private Timestamp generatedAt;
-    private String type; // "alert", "suggestion", "reminder"
+    private String type;
     private String title;
     private String message;
     private Boolean isRead;
 
+    // Constructor vacío requerido por Firestore
     public Recommendation() {}
+
+    // Getters y Setters
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

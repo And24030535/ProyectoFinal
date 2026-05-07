@@ -14,28 +14,27 @@ import org.kordamp.bootstrapfx.BootstrapFX;
 
 import java.io.IOException;
 
-/**
- * Controlador principal que gestiona el menu lateral y el area de contenido dinamico.
- * Adapts the available modules based on the logged-in user's role.
- */
+/*Controlador principal que gestiona el menú lateral y el área de contenido dinámico.
+ Adapta los módulos disponibles según el rol del usuario logeado*/
 public class DashboardController {
 
+    // Elementos deinterfaz
     @FXML private Label userNameLabel;
-    @FXML private Label roleLabel;
-    @FXML private VBox contentArea;
-    @FXML private Button btnPatientsList;
-    @FXML private Button btnAdminPanel;
+    @FXML private Label roleLabel;          // Etiqueta con el rol del usuario
+    @FXML private VBox contentArea;         // Área central donde se cargan los módulos
+    @FXML private Button btnPatientsList;   // Botón para ir a la lista de pacientes
+    @FXML private Button btnAdminPanel;     // Botón para ir al panel administrador
 
-    private User loggedInUser;
+    //Datos
+    private User loggedInUser;              // Usuario actualmente logeado
 
-    /**
-     * Initializes the panel with the information of the logged-in user.
-     * Adjusts the UI based on the user role.
-     */
+    /*Inicializa el panel con la información del usuario logeado.
+     Ajusta la interfaz según el rol del usuario */
     public void initData(User user) {
         this.loggedInUser = user;
+        System.out.println("ROL DEL USUARIO: " + user.getRole());
 
-        // Display the correct name prefix per role
+        // Muestra el prefijo correcto según el rol
         String role = user.getRole() != null ? user.getRole() : "patient";
         switch (role) {
             case "doctor":
@@ -46,64 +45,67 @@ public class DashboardController {
                 userNameLabel.setText(user.getFirstName() + " " + user.getLastName());
                 roleLabel.setText("Administrador");
                 break;
-            default: // patient
+            default:
                 userNameLabel.setText(user.getFirstName() + " " + user.getLastName());
                 roleLabel.setText("Paciente");
                 break;
         }
 
-        // Hide doctor-only modules for patients
         if ("patient".equals(role)) {
             btnPatientsList.setVisible(false);
             btnPatientsList.setManaged(false);
             btnAdminPanel.setVisible(false);
             btnAdminPanel.setManaged(false);
-            // Default module for patients is their own metrics
             onShowMetrics();
         } else if ("admin".equals(role)) {
-            // Admin sees the patient list and the exclusive admin panel
-            onShowAdmin();
+            onShowAdmin();    // Admins van al panel de administración
         } else {
-            // Doctor sees the patient list but not the admin panel
             btnAdminPanel.setVisible(false);
             btnAdminPanel.setManaged(false);
-            onShowPatientsList();
+            onShowPatientsList();  // Médicos ven su lista de pacientes
         }
     }
 
+    //Carga el módulo de lista de pacientes en el área central
     @FXML
     protected void onShowPatientsList() {
         changeModule("/com/itc/healthtrack/views/patients-view.fxml", "patients");
     }
 
+    //Carga el módulo del panel de administración en el área central.
     @FXML
     protected void onShowAdmin() {
         changeModule("/com/itc/healthtrack/views/admin-view.fxml", "admin");
     }
 
+    //Carga el módulo de métricas
     @FXML
     protected void onShowMetrics() {
         changeModule("/com/itc/healthtrack/views/metrics-view.fxml", "metrics");
     }
+
+    //Carga el módulo de reportes
 
     @FXML
     protected void onShowReports() {
         changeModule("/com/itc/healthtrack/views/reports-view.fxml", "reports");
     }
 
+    //Carga el módulo de recomendaciones
     @FXML
     protected void onShowRecommendations() {
         changeModule("/com/itc/healthtrack/views/recommendations-view.fxml", "recommendations");
     }
 
-    /**
-     * Generic method to inject views into the central area of the BorderPane.
-     */
+    /*Método genérico para cargar vistas FXML
+     Instancia el controlador correspondiente y pasa los datos del usuario.*/
     private void changeModule(String fxmlPath, String moduleType) {
         try {
+            // Carga el archivo FXML desde los recursos
             FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlPath));
             Node node = loader.load();
 
+            // Obtiene el controlador y le pasa los datos del usuario logeado
             switch (moduleType) {
                 case "admin":
                     AdminController ac = loader.getController();
@@ -127,6 +129,7 @@ public class DashboardController {
                     break;
             }
 
+            // Reemplaza el contenido anterior por el nuevo módulo
             contentArea.getChildren().clear();
             contentArea.getChildren().add(node);
 
@@ -136,9 +139,8 @@ public class DashboardController {
         }
     }
 
-    /**
-     * Ends the session and restores the login scene with its styles.
-     */
+    /* Cierra la sesión del usuario y vuelve a la pantalla de inicio de sesión.
+     Restaura los estilos CSS para que la pantalla de login sea visible*/
     @FXML
     protected void onLogout(ActionEvent event) {
         try {

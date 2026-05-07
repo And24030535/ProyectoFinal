@@ -8,6 +8,7 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
+<?import org.kordamp.ikonli.javafx.FontIcon?>
 <BorderPane prefHeight="700.0" prefWidth="1000.0" style="-fx-background-color: #121212;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.itc.healthtrack.controllers.DashboardController">
 
     <top>
@@ -15,14 +16,14 @@
             <padding>
                 <Insets left="20.0" right="20.0" />
             </padding>
-            <Label text="HealthTrack Community" textFill="WHITE">
-                <font>
-                    <Font name="System Bold" size="18.0" />
-                </font>
-            </Label>
+            <FontIcon iconColor="#2196f3" iconLiteral="fas-heartbeat" iconSize="50" />
+            <Label text="HealthTrack" textFill="#2196f3"
+                     style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
             <Label maxWidth="Infinity" HBox.hgrow="ALWAYS" />
-            <Label fx:id="roleLabel" text="" textFill="#aaaaaa" style="-fx-padding: 0 10 0 0;" />
-            <Label fx:id="userNameLabel" text="Nombre de Usuario" textFill="WHITE" />
+            <Label fx:id="roleLabel" text="" textFill="#aaaaaa"
+                   style="-fx-padding: 0 10 0 0; -fx-font-size: 13px;"/>
+            <Label fx:id="userNameLabel" text="Nombre de Usuario" textFill="WHITE"
+                   style="-fx-font-size: 13px; -fx-font-weight: bold;"/>
         </HBox>
     </top>
 
@@ -32,7 +33,7 @@
                 <Insets bottom="20.0" left="10.0" right="10.0" top="20.0" />
             </padding>
             <Button fx:id="btnAdminPanel" maxWidth="Infinity" mnemonicParsing="false" onAction="#onShowAdmin" styleClass="btn, btn-warning" text="Panel de Admin" />
-            <Button fx:id="btnPatientsList" maxWidth="Infinity" mnemonicParsing="false" onAction="#onShowPatientsList" styleClass="btn, btn-default" text="Lista de Pacientes" />
+            <Button fx:id="btnPatientsList" maxWidth="Infinity" mnemonicParsing="false" onAction="#onShowPatientsList" styleClass="btn, btn-default" text="Lista de Pacientes" visible="true" managed="true" />
             <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#onShowMetrics" styleClass="btn, btn-default" text="Métricas y Gráficos" />
             <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#onShowReports" styleClass="btn, btn-default" text="Reportes Clínicos" />
             <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#onShowRecommendations" styleClass="btn, btn-default" text="Inteligencia Clínica" />

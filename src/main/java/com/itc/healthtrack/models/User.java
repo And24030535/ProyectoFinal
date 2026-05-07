@@ -19,9 +19,9 @@ public class User {
     private String gender;            // "M" o "F"
     private Double height;            // Estatura en metros
     private String assignedDoctorId;  // UID del médico a cargo
+    private String assignedDoctorName; // Nombre del médico asignado
 
     // Campos exclusivos para médicos
-    private String specialty;         // Especialidad médica
     private List<String> patientIds;  // Lista de pacientes a cargo
 
     // Constructor vacío requerido por Firestore
@@ -55,8 +55,8 @@ public class User {
     public String getAssignedDoctorId() { return assignedDoctorId; }
     public void setAssignedDoctorId(String assignedDoctorId) { this.assignedDoctorId = assignedDoctorId; }
 
-    public String getSpecialty() { return specialty; }
-    public void setSpecialty(String specialty) { this.specialty = specialty; }
+    public String getAssignedDoctorName() { return assignedDoctorName; }
+    public void setAssignedDoctorName(String assignedDoctorName) { this.assignedDoctorName = assignedDoctorName; }
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }

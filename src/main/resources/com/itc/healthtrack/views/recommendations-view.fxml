@@ -7,17 +7,16 @@
 <VBox spacing="20.0" style="-fx-background-color: #121212;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.itc.healthtrack.controllers.RecommendationsController">
     <padding><Insets bottom="30.0" left="30.0" right="30.0" top="30.0"/></padding>
 
-    <Label text="Análisis y Recomendaciones Inteligentes" textFill="WHITE">
-        <font><Font name="System Bold" size="24.0"/></font>
-    </Label>
+    <Label text="Análisis y Recomendaciones Inteligentes" textFill="WHITE"
+            style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+
 
     <HBox spacing="20.0" VBox.vgrow="ALWAYS">
 
         <!-- Left panel: patient selection + recommendation history -->
         <VBox spacing="15.0" prefWidth="350.0" styleClass="panel-secundario" style="-fx-padding: 20;">
-            <Label text="Selección de Paciente" textFill="WHITE">
-                <font><Font name="System Bold" size="16.0"/></font>
-            </Label>
+            <Label text="Selección de Paciente" textFill="WHITE"
+                    style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
 
             <ComboBox fx:id="comboPatients" maxWidth="Infinity" minHeight="-Infinity"
                       prefHeight="35.0" promptText="Selecciona para analizar..." />
@@ -26,10 +25,9 @@
 
             <Separator style="-fx-background-color: #444444;" />
 
-            <Label text="Historial de Análisis Guardados" textFill="WHITE">
-                <font><Font name="System Bold" size="14.0"/></font>
-            </Label>
-            <Label text="Selecciona una entrada para ver el análisis completo." textFill="#aaaaaa"
+            <Label text="Historial de Análisis" textFill="WHITE"
+                    style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+            <Label text="Selecciona una entrada para ver el análisis completo" textFill="#aaaaaa"
                    wrapText="true" style="-fx-font-size: 11px;" />
 
             <ListView fx:id="listHistory" VBox.vgrow="ALWAYS"
@@ -42,18 +40,16 @@
         <!-- Right panel: current diagnosis + tabbed external services -->
         <VBox spacing="15.0" HBox.hgrow="ALWAYS" styleClass="panel-secundario" style="-fx-padding: 20;">
 
-            <Label text="Diagnóstico y Alertas" textFill="WHITE">
-                <font><Font name="System Bold" size="18.0"/></font>
-            </Label>
+            <Label text="Diagnóstico y Alertas" textFill="WHITE"
+                    style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
             <TextArea fx:id="txtRecommendations" editable="false" wrapText="true" VBox.vgrow="ALWAYS"
                       style="-fx-font-size: 14px; -fx-text-fill: #e0e0e0;
                              -fx-control-inner-background: #2c2c2c;" />
 
             <Separator style="-fx-background-color: #444444;" />
 
-            <Label text="Servicios Web Externos" textFill="WHITE">
-                <font><Font name="System Bold" size="14.0"/></font>
-            </Label>
+            <Label text="Servicios Web Externos" textFill="WHITE"
+                    style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
 
             <!-- TabPane with FDA and Nutritional API tabs -->
             <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE"

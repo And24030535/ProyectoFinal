@@ -24,23 +24,28 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 
+//Controlador para la gestión de recomendaciones clínicas
 public class RecommendationsController {
 
-    @FXML private ComboBox<User> comboPatients;
-    @FXML private TextArea txtRecommendations;
-    @FXML private TextArea txtWebService;
-    @FXML private TextArea txtNutrition;
-    @FXML private ListView<Recommendation> listHistory;
+    //Elementos de interfaz
+    @FXML private ComboBox<User> comboPatients;     // ComboBox para seleccionar paciente
+    @FXML private TextArea txtRecommendations;      // Área de texto para mostrar análisis/recomendaciones
+    @FXML private TextArea txtWebService;           // Área para mostrar datos de servicios web (FDA)
+    @FXML private TextArea txtNutrition;            // Área para mostrar información nutricional (USDA)
+    @FXML private ListView<Recommendation> listHistory;  // Lista de recomendaciones históricas
 
+    // Acceso a datos
     private final PatientDAO patientDAO = new PatientDAO();
     private final MetricDAO metricDAO = new MetricDAO();
     private final RecommendationDAO recommendationDAO = new RecommendationDAO();
     private final NotificationService notificationService = new NotificationService();
-    private User loggedInDoctor;
-    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    private User loggedInDoctor;                     // Usuario médico/admin logeado
+    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();  // Cliente HTTP para APIs externas
 
-    private ObservableList<Recommendation> historyItems;
+    private ObservableList<Recommendation> historyItems;  // Lista observable para el historial
 
+    /*Inicializa el controlador con los datos del usuario logeado
+     pacientes ven solo sus datos, médicos/admin ven lista de pacientes*/
     public void initData(User doctor) {
         this.loggedInDoctor = doctor;
         setupHistory();
@@ -49,10 +54,13 @@ public class RecommendationsController {
             comboPatients.getItems().add(doctor);
             comboPatients.getSelectionModel().selectFirst();
             comboPatients.setDisable(true);
-            loadRecommendationHistory(doctor.getUid());
+            // Asegura que el UID no sea nulo
+            String uid = doctor.getUid() != null ? doctor.getUid() : "";
+            System.out.println("UID paciente para historial: " + uid); // temporal
+            loadRecommendationHistory(uid);
         } else {
             loadPatients();
-            // Reload history whenever the selected patient changes
+            // Recargar historial cuando cambia el paciente seleccionado
             comboPatients.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal != null) {
                     historyItems.clear();
@@ -62,10 +70,8 @@ public class RecommendationsController {
         }
     }
 
-    /**
-     * Configures the ListView that shows past saved recommendations.
-     * Clicking a past item restores its full text in the main TextArea.
-     */
+    /*Configura el ListView que muestra recomendaciones guardadas anteriormente
+     Al hacer clic en un elemento, restaura el texto completo*/
     private void setupHistory() {
         historyItems = FXCollections.observableArrayList();
         listHistory.setItems(historyItems);
@@ -86,7 +92,7 @@ public class RecommendationsController {
             }
         });
 
-        // Show the stored analysis text when a history entry is selected
+        // Mostrar el texto almacenado del análisis cuando se selecciona una entrada del historial
         listHistory.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null && newVal.getMessage() != null) {
                 txtRecommendations.setText(newVal.getMessage());
@@ -94,21 +100,23 @@ public class RecommendationsController {
         });
     }
 
+    /*Carga la lista de pacientes en el ComboBox.
+     Si es admin, carga todos los pacientes; si es médico, solo sus pacientes asignados*/
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> patients = patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
+                List<User> patients = "admin".equals(loggedInDoctor.getRole())
+                        ? patientDAO.getAllPatients()
+                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
                 Platform.runLater(() -> comboPatients.setItems(FXCollections.observableArrayList(patients)));
             } catch (Exception e) {
-                Platform.runLater(() -> txtRecommendations.setText("Error al cargar la lista de pacientes."));
+                Platform.runLater(() -> txtRecommendations.setText("Error al cargar la lista de pacientes"));
                 e.printStackTrace();
             }
         }).start();
     }
 
-    /**
-     * Loads past recommendations for the given patient and populates listHistory.
-     */
+    //Carga recomendaciones pasadas para el paciente dado y las muestra en listHistory
     private void loadRecommendationHistory(String patientId) {
         new Thread(() -> {
             try {
@@ -118,12 +126,13 @@ public class RecommendationsController {
                     historyItems.addAll(history);
                 });
             } catch (Exception e) {
-                System.err.println("Error loading recommendation history: " + e.getMessage());
+                System.err.println("Error cargando recomendaciones: " + e.getMessage());
             }
         }).start();
     }
 
-
+    /*Analiza las métricas del paciente seleccionado y genera recomendaciones automáticas.
+     Consulta APIs externas (clima, FDA, nutrición) y guarda el análisis en Firestore */
     @FXML
     protected void onAnalyzePatient() {
         User selected = comboPatients.getValue();
@@ -139,11 +148,11 @@ public class RecommendationsController {
                 String weatherData = fetchWeatherData();
                 String analysis = generateAlgorithmicRecommendations(history, weatherData);
 
-                // Check for risk progression and send notification if needed
+                // Verificar progresión de riesgo y enviar notificación si es necesario
                 if (hasRiskProgression(history)) {
                     notificationService.notifyPatient(selected,
                             "Análisis de tendencias detectó una progresión de riesgo en tus métricas. Consulta a tu médico.");
-                    // Only send the doctor notification when the logged-in user is a doctor or admin
+                    // Solo enviar notificación al médico cuando el usuario logeado es médico o admin
                     if (loggedInDoctor != null
                             && ("doctor".equals(loggedInDoctor.getRole()) || "admin".equals(loggedInDoctor.getRole()))) {
                         notificationService.notifyDoctor(loggedInDoctor,
@@ -153,13 +162,13 @@ public class RecommendationsController {
                     }
                 }
 
-                // Persist analysis to Firestore and refresh history list after saving
+                // Persistir análisis en Firestore y refrescar lista de historial después de guardar
                 persistRecommendation(selected.getUid(), analysis);
 
-                // Fetch FDA data (async, updates txtWebService internally)
+                // Obtener datos FDA
                 fetchExternalMedicalData();
 
-                // Fetch nutritional advice based on latest metric values
+                // Obtener consejos nutricionales basados en las últimas métricas
                 String foodQuery = determineFoodQuery(history);
                 fetchNutritionalData(foodQuery);
 
@@ -172,35 +181,46 @@ public class RecommendationsController {
         }).start();
     }
 
-    /**
-     * Fetches current weather conditions from the public wttr.in API.
-     *
-     * @return A short weather description string, or "unknown" on failure.
-     */
+    //Obtiene las condiciones climáticas actuales desde la API pública wttr.in
     private String fetchWeatherData() {
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://wttr.in/?format=%C+%t+%h"))
+                    .uri(URI.create("https://api.open-meteo.com/v1/forecast?latitude=21.0190&longitude=-101.2574&current_weather=true&timezone=America%2FMexico_City"))
                     .timeout(Duration.ofSeconds(8))
                     .GET()
                     .build();
-
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.body().trim();
+            System.out.println("Open-Meteo status: " + response.statusCode());
+            System.out.println("Open-Meteo body: " + response.body());
+
+            JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+            JsonObject current = root.getAsJsonObject("current_weather");
+            double temp = current.get("temperature").getAsDouble();
+            int code = current.get("weathercode").getAsInt();
+            String condicion = weatherCodeToSpanish(code);
+            return condicion + " " + temp + "°C";
         } catch (Exception e) {
-            return "unknown";
+            System.out.println("ERROR CLIMA: " + e.getMessage());
+            return "No disponible";
         }
     }
 
-    /**
-     * Evaluates whether the patient's last three consecutive readings show a persistent
-     * risk pattern (e.g., three hypertensive or three hyperglycemic readings in a row).
-     * A minimum of three readings is required because a single abnormal value may be an
-     * isolated anomaly, whereas three consecutive critical values indicate a genuine trend.
-     *
-     * @param history Ordered list of patient metrics (newest first).
-     * @return true if a sustained risk progression pattern is detected across the last 3 readings.
-     */
+    //Convierte códigos de clima de Open-Meteo a descripciones en español
+    private String weatherCodeToSpanish(int code) {
+        if (code == 0) return "Despejado";
+        if (code <= 3) return "Parcialmente nublado";
+        if (code <= 48) return "Nublado";
+        if (code <= 67) return "Lluvia";
+        if (code <= 77) return "Nieve";
+        if (code <= 82) return "Chubascos";
+        if (code <= 99) return "Tormenta";
+        return "Variable";
+    }
+
+    /*Evalúa si las últimas tres lecturas consecutivas del paciente muestran un patrón
+    de riesgo persistente (ej: tres lecturas hipertensivas o hiperglucémicas seguidas).
+    Se requieren al menos tres lecturas porque un valor anormal único puede ser una anomalía aislada,
+    mientras que tres valores críticos consecutivos indican una tendencia genuina*/
     private boolean hasRiskProgression(List<Metric> history) {
         if (history == null || history.size() < 3) return false;
 
@@ -216,14 +236,8 @@ public class RecommendationsController {
         return hypertensiveCount >= 3 || hyperglycemicCount >= 3;
     }
 
-    /**
-     * Rule-based recommendation engine that correlates patient metrics with
-     * weather conditions and nutrition guidelines.
-     *
-     * @param history     Ordered patient metric history (newest first).
-     * @param weatherData Current weather description from the external API.
-     * @return A formatted clinical recommendation report.
-     */
+    /*recomendaciones basado en reglas que relaciona métricas del paciente
+     con condiciones climáticas y guías nutricionales*/
     private String generateAlgorithmicRecommendations(List<Metric> history, String weatherData) {
         if (history == null || history.isEmpty()) {
             return "No hay registros clínicos suficientes para generar un análisis.";
@@ -231,7 +245,7 @@ public class RecommendationsController {
 
         Metric latest = history.get(0);
         StringBuilder report = new StringBuilder();
-        report.append("=== ANÁLISIS CLÍNICO — HealthTrack ===\n");
+        report.append("ANÁLISIS CLÍNICO — HealthTrack \n");
         report.append("Última evaluación: ").append(latest.getTimestamp().toDate().toString()).append("\n");
         report.append("Condición climática actual: ").append(weatherData).append("\n\n");
 
@@ -243,11 +257,11 @@ public class RecommendationsController {
                 || weatherLower.contains("cold")
                 || weatherLower.contains("frio");
 
-        // Blood pressure rules
+        // Reglas para presión arterial
         if (latest.getSystolic() != null && latest.getDiastolic() != null) {
             int sys = latest.getSystolic();
             int dia = latest.getDiastolic();
-            report.append("■ PRESIÓN ARTERIAL (").append(sys).append("/").append(dia).append(" mmHg):\n");
+            report.append("+ PRESIÓN ARTERIAL (").append(sys).append("/").append(dia).append(" mmHg):\n");
             if (sys < 120 && dia < 80) {
                 report.append("  - Estado: Óptimo. Mantener estilo de vida actual.\n");
                 if (isRainy) {
@@ -276,10 +290,10 @@ public class RecommendationsController {
             report.append("\n");
         }
 
-        // Glucose rules
+        // Reglas para glucosa
         if (latest.getGlucoseLevel() != null) {
             double gluc = latest.getGlucoseLevel();
-            report.append("■ GLUCOSA (").append(gluc).append(" mg/dL):\n");
+            report.append("+ GLUCOSA (").append(gluc).append(" mg/dL):\n");
             if (gluc > 300) {
                 report.append("  - ALERTA CRÍTICA: Glucosa muy elevada. Riesgo de cetoacidosis diabética.\n");
                 report.append("  - Acción: Atención médica inmediata. No realizar ejercicio físico.\n");
@@ -302,10 +316,10 @@ public class RecommendationsController {
             report.append("\n");
         }
 
-        // Heart rate rules
+        // Reglas para frecuencia cardíaca
         if (latest.getHeartRate() != null) {
             int hr = latest.getHeartRate();
-            report.append("■ FRECUENCIA CARDÍACA (").append(hr).append(" lpm):\n");
+            report.append("+ FRECUENCIA CARDÍACA (").append(hr).append(" lpm):\n");
             if (hr > 120) {
                 report.append("  - ALERTA: Taquicardia. Evitar ejercicio intenso y cafeína.\n");
             } else if (hr > 100) {
@@ -318,10 +332,10 @@ public class RecommendationsController {
             report.append("\n");
         }
 
-        // BMI rules
+        // Reglas para IMC
         if (latest.getBmi() != null) {
             double bmi = latest.getBmi();
-            report.append("■ ÍNDICE DE MASA CORPORAL (IMC: ").append(bmi).append("):\n");
+            report.append("+ ÍNDICE DE MASA CORPORAL (IMC: ").append(bmi).append("):\n");
             if (bmi >= 40) {
                 report.append("  - Obesidad mórbida (Clase III). Plan multidisciplinario urgente.\n");
             } else if (bmi >= 35) {
@@ -341,19 +355,17 @@ public class RecommendationsController {
             report.append("\n");
         }
 
-        report.append("--- Generado por HealthTrack Community ---");
+        report.append("--- Generado por HealthTrack ---");
         return report.toString();
     }
 
-    /**
-     * Asynchronously fetches drug label data from the public openFDA API
-     * as a demonstration of external web service integration.
-     */
+    /*Obtiene de forma asíncrona datos de etiquetas de medicamentos desde la API pública openFDA
+     como demostración de integración con servicios web externos*/
     private void fetchExternalMedicalData() {
         Platform.runLater(() -> txtWebService.setText("Conectando con servicio openFDA..."));
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.fda.gov/drug/label.json?limit=1"))
+                .uri(URI.create("https://api.fda.gov/drug/label.json?search=indications_and_usage:hypertension+OR+diabetes+OR+obesity&limit=5"))
                 .timeout(Duration.ofSeconds(10))
                 .GET()
                 .build();
@@ -361,26 +373,33 @@ public class RecommendationsController {
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(HttpResponse::body)
                 .thenAccept(responseBody -> {
-                    String snippet = responseBody.length() > 500
-                            ? responseBody.substring(0, 500) + "...\n[Respuesta truncada]"
-                            : responseBody;
-                    Platform.runLater(() -> txtWebService.setText(
-                            "Datos obtenidos exitosamente de openFDA:\n\n" + snippet));
-                })
-                .exceptionally(e -> {
-                    Platform.runLater(() -> txtWebService.setText(
-                            "Fallo en la conexión al Web Service externo.\n" + e.getMessage()));
-                    return null;
+                    try {
+                        JsonObject root = JsonParser.parseString(responseBody).getAsJsonObject();
+                        JsonArray results = root.getAsJsonArray("results");
+                        StringBuilder sb = new StringBuilder("FDA — Medicamentos\n\n");
+                        for (int i = 0; i < Math.min(3, results.size()); i++) {
+                            JsonObject item = results.get(i).getAsJsonObject();
+                            if (item.has("openfda")) {
+                                JsonObject openfda = item.getAsJsonObject("openfda");
+                                if (openfda.has("brand_name"))
+                                    sb.append("• ").append(openfda.getAsJsonArray("brand_name").get(0).getAsString()).append("\n");
+                                if (openfda.has("generic_name"))
+                                    sb.append("  Genérico: ").append(openfda.getAsJsonArray("generic_name").get(0).getAsString()).append("\n");
+                                if (openfda.has("route"))
+                                    sb.append("  Vía: ").append(openfda.getAsJsonArray("route").get(0).getAsString()).append("\n");
+                                sb.append("\n");
+                            }
+                        }
+                        sb.append("Fuente: openFDA (api.fda.gov)");
+                        Platform.runLater(() -> txtWebService.setText(sb.toString()));
+                    } catch (Exception e) {
+                        Platform.runLater(() -> txtWebService.setText("Error al procesar datos FDA.\n" + e.getMessage()));
+                    }
                 });
     }
 
-    /**
-     * Saves the generated clinical analysis as a Recommendation document in Firestore.
-     * Reloads the history list after the record is committed.
-     *
-     * @param patientId    UID of the patient the analysis belongs to.
-     * @param analysisText Full text generated by the recommendation engine.
-     */
+    /*Guarda el análisis clínico generado como un documento Recommendation en Firestore
+    Recarga la lista de historial después de confirmar el guardado */
     private void persistRecommendation(String patientId, String analysisText) {
         new Thread(() -> {
             try {
@@ -392,20 +411,15 @@ public class RecommendationsController {
                 rec.setMessage(analysisText);
                 rec.setIsRead(false);
                 recommendationDAO.saveRecommendation(rec);
-                // Refresh the history list once the save is confirmed
+                // Refrescar la lista de historial una vez confirmado el guardado
                 loadRecommendationHistory(patientId);
             } catch (Exception e) {
-                System.err.println("Error persisting recommendation: " + e.getMessage());
+                System.err.println("Error guardando recomendación: " + e.getMessage());
             }
         }).start();
     }
 
-    /**
-     * Chooses a nutritional search query that matches the patient's latest clinical values.
-     *
-     * @param history Patient metric history (newest first).
-     * @return A food search query string for the USDA API.
-     */
+    //Elige una consulta de búsqueda nutricional que coincida con los últimos valores clínicos del paciente
     private String determineFoodQuery(List<Metric> history) {
         if (history == null || history.isEmpty()) {
             return "mediterranean diet healthy foods";
@@ -424,12 +438,8 @@ public class RecommendationsController {
         return "mediterranean diet healthy foods";
     }
 
-    /**
-     * Asynchronously queries the USDA FoodData Central public API for nutritional
-     * information about foods relevant to the patient's condition.
-     *
-     * @param foodQuery Search term derived from the patient's latest metrics.
-     */
+    /*Consulta de forma asíncrona la API pública USDA FoodData Central para obtener
+     información nutricional sobre alimentos relevantes para la condición del paciente*/
     private void fetchNutritionalData(String foodQuery) {
         Platform.runLater(() -> txtNutrition.setText("Consultando USDA FoodData Central..."));
 
@@ -451,19 +461,13 @@ public class RecommendationsController {
                 })
                 .exceptionally(e -> {
                     Platform.runLater(() -> txtNutrition.setText(
-                            "Error al conectar con USDA FoodData Central.\n" + e.getMessage()));
+                            "Error al conectar con USDA FoodData Central\n" + e.getMessage()));
                     return null;
                 });
     }
 
-    /**
-     * Parses the JSON response from the USDA FoodData Central API and formats
-     * the top results with their main macronutrient values.
-     *
-     * @param jsonBody     Raw JSON string returned by the API.
-     * @param query        The original food query used for display purposes.
-     * @return Human-readable nutritional summary.
-     */
+    /*Parsea la respuesta JSON de la API USDA FoodData Central y formatea
+    los mejores resultados con sus principales valores de macronutrientes */
     private String parseNutritionalResponse(String jsonBody, String query) {
         try {
             JsonObject root = JsonParser.parseString(jsonBody).getAsJsonObject();
@@ -474,7 +478,7 @@ public class RecommendationsController {
             }
 
             StringBuilder result = new StringBuilder();
-            result.append("=== USDA FoodData Central ===\n");
+            result.append("USDA FoodData Central\n");
             result.append("Búsqueda: ").append(query).append("\n\n");
 
             for (int i = 0; i < Math.min(3, foods.size()); i++) {
