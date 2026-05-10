@@ -44,8 +44,9 @@ public class RecommendationsController {
 
     private ObservableList<Recommendation> historyItems;  // Lista observable para el historial
 
-    /*Inicializa el controlador con los datos del usuario logeado
-     pacientes ven solo sus datos, médicos/admin ven lista de pacientes*/
+    //Inicializa el controlador con los datos del usuario logeado
+    //pacientes ven solo sus datos, médicos/admin ven lista de pacientes
+
     public void initData(User doctor) {
         this.loggedInDoctor = doctor;
         setupHistory();
@@ -217,7 +218,7 @@ public class RecommendationsController {
         return "Variable";
     }
 
-    /*Evalúa si las últimas tres lecturas consecutivas del paciente muestran un patrón
+    /* Evalúa si las últimas tres lecturas consecutivas del paciente muestran un patrón
     de riesgo persistente (ej: tres lecturas hipertensivas o hiperglucémicas seguidas).
     Se requieren al menos tres lecturas porque un valor anormal único puede ser una anomalía aislada,
     mientras que tres valores críticos consecutivos indican una tendencia genuina*/

@@ -54,6 +54,9 @@ dependencies {
     implementation("com.itextpdf:itext7-core:7.2.5")
     implementation("org.apache.poi:poi-ooxml:5.2.3")
 
+    // Alertas por correo
+    implementation("com.sun.mail:javax.mail:1.6.2")
+
     testImplementation("org.junit.jupiter:junit-jupiter-api:${junitVersion}")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junitVersion}")
 }

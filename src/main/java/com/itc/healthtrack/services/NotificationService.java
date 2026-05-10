@@ -2,68 +2,90 @@ package com.itc.healthtrack.services;
 
 import com.itc.healthtrack.models.User;
 
+import java.util.Properties;
+import javax.mail.*;
+import javax.mail.internet.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-/**
- * Service that simulates external notifications (email/SMS) to patients and doctors
- * when critical health metric trends are detected.
- */
+// Servicio asíncrono para enviar notificaciones por correo electrónico usando SMTP
 public class NotificationService {
 
+    // Configuración del servidor SMTP de Gmail
+    private static final String SMTP_HOST = "smtp.gmail.com";
+    private static final String SMTP_PORT = "587";
+
+    // Credenciales
+    private static final String SYSTEM_EMAIL = "clinica.healthtrack@gmail.com";
+    private static final String SYSTEM_PASSWORD = "abcdefghijklmnop";
+
+    // Formato estándar para la marca de tiempo de los mensajes
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /**
-     * Simulates sending an email/SMS notification to a patient.
-     * In a production environment, this would integrate with an SMTP
-     * server or a messaging API (e.g., Twilio, SendGrid).
-     *
-     * @param patient The patient to notify.
-     * @param message The notification message body.
-     */
+    // Método para notificar a un paciente. Se ejecuta en un hilo secundario para evitar congelar la interfaz.
     public void notifyPatient(User patient, String message) {
-        sendNotification("PATIENT", patient.getEmail(), getFullName(patient), message);
+        new Thread(() -> {
+            String subject = "HealthTrack - Alerta de Salud";
+            String recipientName = patient.getFirstName() + " " + patient.getLastName();
+            sendEmail(patient.getEmail(), subject, recipientName, message);
+        }).start();
     }
 
-    /**
-     * Simulates sending an email/SMS notification to a doctor.
-     *
-     * @param doctor  The doctor to notify.
-     * @param message The notification message body.
-     */
+    // Método para notificar al médico encargado. También utiliza un hilo secundario independiente.
     public void notifyDoctor(User doctor, String message) {
-        sendNotification("DOCTOR", doctor.getEmail(), "Dr. " + getFullName(doctor), message);
+        new Thread(() -> {
+            String subject = "HealthTrack - Actualización de Paciente";
+            String recipientName = "Dr. " + doctor.getFirstName() + " " + doctor.getLastName();
+            sendEmail(doctor.getEmail(), subject, recipientName, message);
+        }).start();
     }
 
-    /**
-     * Returns the full display name for a user.
-     *
-     * @param user The user whose name to format.
-     * @return First name + " " + last name.
-     */
-    private String getFullName(User user) {
-        return user.getFirstName() + " " + user.getLastName();
-    }
+    // Método principal interno que construye y transfiere el correo a través de la red
+    private void sendEmail(String toEmail, String subject, String recipientName, String messageBody) {
+        // Verifica que la dirección destino sea válida antes de intentar conectar
+        if (toEmail == null || toEmail.isEmpty()) {
+            System.err.println("No se proporcionó correo para el destinatario: " + recipientName);
+            return;
+        }
 
-    /**
-     * Core method that simulates the dispatch of an external notification.
-     * Logs the notification details to stdout as a simulation.
-     *
-     * @param recipientType  Role label ("PATIENT" or "DOCTOR").
-     * @param email          Recipient email address.
-     * @param recipientName  Full display name of the recipient.
-     * @param message        The message body to deliver.
-     */
-    private void sendNotification(String recipientType, String email,
-                                   String recipientName, String message) {
-        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-        System.out.println("=== HealthTrack Notification Dispatch ===");
-        System.out.println("Timestamp  : " + timestamp);
-        System.out.println("Recipient  : [" + recipientType + "] " + recipientName);
-        System.out.println("Email      : " + email);
-        System.out.println("Message    : " + message);
-        System.out.println("Status     : SENT (simulated)");
-        System.out.println("=========================================");
+        // Configuración de las propiedades de seguridad y conexión SMTP
+        Properties properties = new Properties();
+        properties.put("mail.smtp.auth", "true");
+        properties.put("mail.smtp.starttls.enable", "true");
+        properties.put("mail.smtp.host", SMTP_HOST);
+        properties.put("mail.smtp.port", SMTP_PORT);
+
+        // Creación de la sesión autenticada con las credenciales del sistema
+        Session session = Session.getInstance(properties, new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(SYSTEM_EMAIL, SYSTEM_PASSWORD);
+            }
+        });
+
+        try {
+            // Creación del paquete de correo (mensaje MIME)
+            Message message = new MimeMessage(session);
+            message.setFrom(new InternetAddress(SYSTEM_EMAIL));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail));
+            message.setSubject(subject);
+
+            // Construcción del cuerpo del correo que verá el usuario final
+            String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+            String fullMessage = "Hola " + recipientName + ",\n\n" +
+                    messageBody + "\n\n" +
+                    "Generado el: " + timestamp + "\n" +
+                    "HealthTrack Community - OwO";
+
+            message.setText(fullMessage);
+
+            // Ejecuta el envío final mediante el protocolo de transporte
+            Transport.send(message);
+            System.out.println("Correo enviado exitosamente a: " + toEmail);
+        } catch (MessagingException e) {
+            System.err.println("Fallo al enviar el correo a: " + toEmail);
+            e.printStackTrace();
+        }
     }
 }

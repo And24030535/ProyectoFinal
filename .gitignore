@@ -43,7 +43,7 @@ bin/
 .DS_Store
 
 ### Archivos sensibles - Credenciales ###
-firebase-key.json
+src/main/resources/firebase-key.json
 *.key
 *.pem
 *.p12
