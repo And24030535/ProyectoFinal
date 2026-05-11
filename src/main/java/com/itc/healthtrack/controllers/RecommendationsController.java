@@ -119,19 +119,32 @@ public class RecommendationsController {
 
     //Carga recomendaciones pasadas para el paciente dado y las muestra en listHistory
     private void loadRecommendationHistory(String patientId) {
-        new Thread(() -> {
+
+        // 1. Definimos la tarea pesada que se ejecutará en segundo plano
+        Runnable backgroundTask = () -> {
             try {
+                // 2. Consultamos la base de datos de Firebase (esto requiere conexión a internet y toma tiempo)
                 List<Recommendation> history = recommendationDAO.getRecommendationsByPatient(patientId);
-                Platform.runLater(() -> {
-                    historyItems.clear();
-                    historyItems.addAll(history);
-                });
+
+                // 3. Definimos la tarea visual que modificará los componentes de la pantalla
+                Runnable screenUpdate = () -> {
+                    historyItems.clear();         // Vaciamos el historial anterior de la interfaz
+                    historyItems.addAll(history); // Agregamos los nuevos datos descargados
+                };
+
+                // 4. Entregamos la tarea visual al hilo principal de JavaFX para que la ejecute de forma segura
+                Platform.runLater(screenUpdate);
+
             } catch (Exception e) {
+                // Capturamos cualquier error de red o base de datos
                 System.err.println("Error cargando recomendaciones: " + e.getMessage());
             }
-        }).start();
-    }
+        };
 
+        // 5. Asignamos nuestra tarea de fondo a un hilo nuevo y comenzamos su ejecución
+        Thread hiloSecundario = new Thread(backgroundTask);
+        hiloSecundario.start();
+    }
     /*Analiza las métricas del paciente seleccionado y genera recomendaciones automáticas.
      Consulta APIs externas (clima, FDA, nutrición) y guarda el análisis en Firestore */
     @FXML
@@ -484,8 +497,9 @@ public class RecommendationsController {
 
             for (int i = 0; i < Math.min(3, foods.size()); i++) {
                 JsonObject food = foods.get(i).getAsJsonObject();
-                String description = food.has("description")
-                        ? food.get("description").getAsString() : "N/A";
+                String description;
+                if (food.has("description")) description = food.get("description").getAsString();
+                else description = "N/A";
                 result.append("• ").append(description).append("\n");
 
                 if (food.has("foodNutrients")) {
