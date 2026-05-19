@@ -1,6 +1,6 @@
 package com.itc.healthtrack.services;
 
-import com.itc.healthtrack.models.User;
+import com.itc.healthtrack.dto.UserSession;
 
 import java.util.Properties;
 import javax.mail.*;
@@ -24,21 +24,33 @@ public class NotificationService {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     // Método para notificar a un paciente. Se ejecuta en un hilo secundario para evitar congelar la interfaz.
-    public void notifyPatient(User patient, String message) {
+    public void notifyPatient(UserSession patient, String message) {
         new Thread(() -> {
             String subject = "HealthTrack - Alerta de Salud";
-            String recipientName = patient.getFirstName() + " " + patient.getLastName();
+            String recipientName = buildRecipientName(patient);
             sendEmail(patient.getEmail(), subject, recipientName, message);
         }).start();
     }
 
     // Método para notificar al médico encargado. También utiliza un hilo secundario independiente.
-    public void notifyDoctor(User doctor, String message) {
+    public void notifyDoctor(UserSession doctor, String message) {
         new Thread(() -> {
             String subject = "HealthTrack - Actualización de Paciente";
-            String recipientName = "Dr. " + doctor.getFirstName() + " " + doctor.getLastName();
+            String recipientName = "Dr. " + buildRecipientName(doctor);
             sendEmail(doctor.getEmail(), subject, recipientName, message);
         }).start();
+    }
+
+    private String buildRecipientName(UserSession session) {
+        String firstName = session != null ? session.getFirstName() : null;
+        String lastName = session != null ? session.getLastName() : null;
+        if (firstName != null && lastName != null) {
+            return firstName + " " + lastName;
+        }
+        if (firstName != null) {
+            return firstName;
+        }
+        return lastName != null ? lastName : "Usuario";
     }
 
     // Método principal interno que construye y transfiere el correo a través de la red

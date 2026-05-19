@@ -1,6 +1,6 @@
 package com.itc.healthtrack.controllers;
 
-import com.itc.healthtrack.models.User;
+import com.itc.healthtrack.dto.UserSession;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -26,27 +26,29 @@ public class DashboardController {
     @FXML private Button btnAdminPanel;     // Botón para ir al panel administrador
 
     //Datos
-    private User loggedInUser;              // Usuario actualmente logeado
+    private UserSession loggedInUser;              // Usuario actualmente logeado
 
     /*Inicializa el panel con la información del usuario logeado.
      Ajusta la interfaz según el rol del usuario */
-    public void initData(User user) {
+    public void initData(UserSession user) {
         this.loggedInUser = user;
-        System.out.println("ROL DEL USUARIO: " + user.getRole());
+        System.out.println("ROL DEL USUARIO: " + user.getRoleId());
 
         // Muestra el prefijo correcto según el rol
-        String role = user.getRole() != null ? user.getRole() : "patient";
+        String role = user.getRoleId() != null ? user.getRoleId() : "patient";
+        String displayName = buildDisplayName(user);
+
         switch (role) {
             case "doctor":
-                userNameLabel.setText("Dr. " + user.getLastName());
+                userNameLabel.setText(user.getLastName() != null ? "Dr. " + user.getLastName() : displayName);
                 roleLabel.setText("Médico");
                 break;
             case "admin":
-                userNameLabel.setText(user.getFirstName() + " " + user.getLastName());
+                userNameLabel.setText(displayName);
                 roleLabel.setText("Administrador");
                 break;
             default:
-                userNameLabel.setText(user.getFirstName() + " " + user.getLastName());
+                userNameLabel.setText(displayName);
                 roleLabel.setText("Paciente");
                 break;
         }
@@ -64,6 +66,19 @@ public class DashboardController {
             btnAdminPanel.setManaged(false);
             onShowPatientsList();  // Médicos ven su lista de pacientes
         }
+    }
+
+    private String buildDisplayName(UserSession user) {
+        if (user.getFirstName() != null && user.getLastName() != null) {
+            return user.getFirstName() + " " + user.getLastName();
+        }
+        if (user.getFirstName() != null) {
+            return user.getFirstName();
+        }
+        if (user.getLastName() != null) {
+            return user.getLastName();
+        }
+        return user.getEmail() != null ? user.getEmail() : "Usuario";
     }
 
     //Carga el módulo de lista de pacientes en el área central

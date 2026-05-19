@@ -1,7 +1,11 @@
 package com.itc.healthtrack.controllers;
 
+import com.google.cloud.Timestamp;
+import com.itc.healthtrack.dao.DoctorDAO;
 import com.itc.healthtrack.dao.PatientDAO;
 import com.itc.healthtrack.dao.UserDAO;
+import com.itc.healthtrack.models.Doctor;
+import com.itc.healthtrack.models.Patient;
 import com.itc.healthtrack.models.User;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
@@ -33,8 +37,9 @@ public class RegisterController {
     @FXML private Label lblStatus;                  // Etiqueta de estado/errores
     @FXML private Button btnRegister;               // Botón de registro
 
-    // Acdeso a datos
+    // Acceso a datos
     private final PatientDAO patientDAO = new PatientDAO();
+    private final DoctorDAO doctorDAO = new DoctorDAO();
     private final UserDAO userDAO = new UserDAO();
 
     // Inicializa los ComboBox con opciones de género y rol
@@ -90,44 +95,56 @@ public class RegisterController {
             try {
                 // Crear nuevo usuario
                 User newUser = new User();
-                newUser.setFirstName(firstName);
-                newUser.setLastName(lastName);
                 newUser.setEmail(email);
                 newUser.setPassword(password);
-                newUser.setRole(mappedRole);
-                newUser.setGender(comboGender.getValue());
+                newUser.setRoleId(mappedRole);
+                newUser.setRegisteredAt(Timestamp.now());
 
-                if (dpBirthDate.getValue() != null) {
-                    newUser.setBirthDate(dpBirthDate.getValue().toString());
-                }
+                userDAO.save(newUser);
 
-                // Validar y parsear la altura
-                String heightText = txtHeight.getText().trim();
-                if (!heightText.isEmpty()) {
-                    try {
-                        newUser.setHeight(Double.parseDouble(heightText));
-                    } catch (NumberFormatException e) {
-                        Platform.runLater(() -> {
-                            showStatus("Altura inválida.\n Verifica que sea un número decimal (ej: 1.75).", false);
-                            btnRegister.setDisable(false);
-                        });
-                        return;
-                    }
-                }
-
-                // Guardar el usuario en Firestore
-                userDAO.saveUser(newUser);
-
-                // Asignar doctor automáticamente si es paciente
+                // Crear perfil según el rol
                 if ("patient".equals(mappedRole)) {
-                    List<User> doctors = patientDAO.getAllDoctors();
+                    Patient patient = new Patient();
+                    patient.setUserId(newUser.getId());
+                    patient.setFirstName(firstName);
+                    patient.setLastName(lastName);
+                    patient.setGender(comboGender.getValue());
+                    if (dpBirthDate.getValue() != null) {
+                        patient.setBirthDate(dpBirthDate.getValue().toString());
+                    }
+
+                    String heightText = txtHeight.getText().trim();
+                    if (!heightText.isEmpty()) {
+                        try {
+                            patient.setHeight(Double.parseDouble(heightText));
+                        } catch (NumberFormatException e) {
+                            Platform.runLater(() -> {
+                                showStatus("Altura inválida.\n Verifica que sea un número decimal (ej: 1.75).", false);
+                                btnRegister.setDisable(false);
+                            });
+                            return;
+                        }
+                    }
+
+                    List<Doctor> doctors = doctorDAO.getAll();
                     if (!doctors.isEmpty()) {
-                        User randomDoctor = doctors.get((int) (Math.random() * doctors.size()));
-                        patientDAO.assignDoctorToPatient(newUser.getUid(), randomDoctor.getUid());
-                        System.out.println("Paciente registrado y asignado al doctor: " + randomDoctor.getFirstName() + " " + randomDoctor.getLastName());
+                        Doctor randomDoctor = doctors.get((int) (Math.random() * doctors.size()));
+                        patient.setPrimaryDoctorId(randomDoctor.getId());
+                        System.out.println("Paciente registrado y asignado al doctor: "
+                                + randomDoctor.getFirstName() + " " + randomDoctor.getLastName());
                     } else {
                         System.out.println("Paciente registrado pero no hay doctores disponibles para asignar");
                     }
+
+                    patientDAO.save(patient);
+                } else if ("doctor".equals(mappedRole)) {
+                    Doctor doctor = new Doctor();
+                    doctor.setUserId(newUser.getId());
+                    doctor.setFirstName(firstName);
+                    doctor.setLastName(lastName);
+                    doctor.setSpecialtyId(null);
+                    doctor.setLicenseNumber(null);
+                    doctorDAO.save(doctor);
                 }
 
                 Platform.runLater(() -> {

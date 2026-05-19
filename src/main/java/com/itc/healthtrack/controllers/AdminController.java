@@ -1,7 +1,11 @@
 package com.itc.healthtrack.controllers;
 
+import com.itc.healthtrack.dao.DoctorDAO;
 import com.itc.healthtrack.dao.PatientDAO;
 import com.itc.healthtrack.dao.UserDAO;
+import com.itc.healthtrack.dto.UserSession;
+import com.itc.healthtrack.models.Doctor;
+import com.itc.healthtrack.models.Patient;
 import com.itc.healthtrack.models.User;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -12,11 +16,10 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.paint.Color;
 import javafx.collections.transformation.FilteredList;
 import javafx.scene.layout.GridPane;
-import javafx.scene.layout.Priority;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
 /**
  * Controlador del Panel de Administración
@@ -31,27 +34,28 @@ public class AdminController {
     @FXML private Label lblStatus;          // Etiqueta para mensajes de estado
 
     // Tabla de columnas
-    @FXML private TableView<User> tableUsers;                    // Tabla principal de usuarios
-    @FXML private TableColumn<User, String> colFirstName;        // Columna: Nombre
-    @FXML private TableColumn<User, String> colLastName;         // Columna: Apellido
-    @FXML private TableColumn<User, String> colEmail;            // Columna: Correo
-    @FXML private TableColumn<User, String> colRole;             // Columna: Rol
-    @FXML private TableColumn<User, String> colAssignedDoctor;   // Columna: Doctor Asignado
+    @FXML private TableView<UserSession> tableUsers;                    // Tabla principal de usuarios
+    @FXML private TableColumn<UserSession, String> colFirstName;        // Columna: Nombre
+    @FXML private TableColumn<UserSession, String> colLastName;         // Columna: Apellido
+    @FXML private TableColumn<UserSession, String> colEmail;            // Columna: Correo
+    @FXML private TableColumn<UserSession, String> colRole;             // Columna: Rol
+    @FXML private TableColumn<UserSession, String> colAssignedDoctor;   // Columna: Doctor Asignado
     @FXML private TextField txtSearch;                           // Campo de búsqueda
     @FXML private ComboBox<String> cbRoleFilter;                 // Filtro por rol
 
     // Datos y controladores
     private final PatientDAO patientDAO = new PatientDAO();      // Acceso a datos de pacientes
+    private final DoctorDAO doctorDAO = new DoctorDAO();         // Acceso a datos de doctores
     private final UserDAO userDAO = new UserDAO();               // Acceso a datos de usuarios
-    private final ObservableList<User> usersObservableList = FXCollections.observableArrayList();  // Lista observable de usuarios
-    private FilteredList<User> filteredList;                     // Lista filtrada para búsqueda
+    private final ObservableList<UserSession> usersObservableList = FXCollections.observableArrayList();  // Lista observable de usuarios
+    private FilteredList<UserSession> filteredList;                     // Lista filtrada para búsqueda
 
-    private User loggedInAdmin;             // Usuario administrador logeado
-    private User selectedUser = null;       // Usuario seleccionado en la tabla
+    private UserSession loggedInAdmin;             // Usuario administrador logeado
+    private UserSession selectedUser = null;       // Usuario seleccionado en la tabla
 
     /*Inicializa el controlador con los datos del administrador logeado
      Configura la interfaz y carga la lista de usuarios  */
-    public void initData(User admin) {
+    public void initData(UserSession admin) {
         this.loggedInAdmin = admin;
         setupSearchControls();   // Configura los controles de búsqueda
         setupTable();            // Configura las columnas de la tabla
@@ -68,11 +72,11 @@ public class AdminController {
     /*Configura las columnas de la tabla para mostrar datos de los usuarios
      También configura el escuchador para detectar cuando se selecciona un usuario*/
     private void setupTable() {
-        // Vincula cada columna con su propiedad correspondiente del modelo User
+        // Vincula cada columna con su propiedad correspondiente del modelo UserSession
         colFirstName.setCellValueFactory(new PropertyValueFactory<>("firstName"));
         colLastName.setCellValueFactory(new PropertyValueFactory<>("lastName"));
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
-        colRole.setCellValueFactory(new PropertyValueFactory<>("role"));
+        colRole.setCellValueFactory(new PropertyValueFactory<>("roleId"));
         colAssignedDoctor.setCellValueFactory(new PropertyValueFactory<>("assignedDoctorName"));
 
         // Crea una lista filtrable a partir de la lista de usuarios
@@ -83,10 +87,23 @@ public class AdminController {
         tableUsers.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 selectedUser = newVal;
-                lblStatus.setText("Usuario seleccionado: " + newVal.getFirstName() + " " + newVal.getLastName());
+                lblStatus.setText("Usuario seleccionado: " + displayName(newVal));
                 lblStatus.setTextFill(Color.web("#aaaaaa"));
             }
         });
+    }
+
+    private String displayName(UserSession user) {
+        if (user.getFirstName() != null && user.getLastName() != null) {
+            return user.getFirstName() + " " + user.getLastName();
+        }
+        if (user.getFirstName() != null) {
+            return user.getFirstName();
+        }
+        if (user.getLastName() != null) {
+            return user.getLastName();
+        }
+        return user.getEmail() != null ? user.getEmail() : "—";
     }
 
     /*Carga todos los usuarios desde la base de datos (Firestore) en un hilo de fondo.
@@ -96,36 +113,43 @@ public class AdminController {
         new Thread(() -> {
             try {
                 // Obtiene todos los usuarios de Firestore
-                List<User> allUsers = userDAO.getAllUsers();
+                List<User> allUsers = userDAO.getAll();
+                List<Patient> allPatients = patientDAO.getAll();
+                List<Doctor> allDoctors = doctorDAO.getAll();
 
-                // Crea un mapa para convertir IDs de médicos a sus nombres
-                Map<String, String> doctorNameMap = new HashMap<>();
-
-                // Llena el mapa
-                for (User user : allUsers) {
-                    if ("doctor".equals(user.getRole())) {
-                        doctorNameMap.put(user.getUid(), user.getFirstName() + " " + user.getLastName());
-                    }
+                Map<String, Patient> patientByUserId = new HashMap<>();
+                for (Patient patient : allPatients) {
+                    patientByUserId.put(patient.getUserId(), patient);
                 }
 
-                // Asigna el nombre del médico a cada paciente
+                Map<String, Doctor> doctorByUserId = new HashMap<>();
+                Map<String, String> doctorNameMap = new HashMap<>();
+                for (Doctor doctor : allDoctors) {
+                    doctorByUserId.put(doctor.getUserId(), doctor);
+                    doctorNameMap.put(doctor.getId(), doctor.getFirstName() + " " + doctor.getLastName());
+                }
+
+                // Construye las sesiones con perfiles
+                List<UserSession> sessions = new java.util.ArrayList<>();
                 for (User user : allUsers) {
-                    if ("patient".equals(user.getRole()) && user.getAssignedDoctorId() != null) {
-                        String doctorName = doctorNameMap.get(user.getAssignedDoctorId());
-                        user.setAssignedDoctorName(doctorName != null ? doctorName : "—");
-                    } else if ("patient".equals(user.getRole())) {
-                        user.setAssignedDoctorName("—");  // Sin médico asignado
+                    Patient patient = patientByUserId.get(user.getId());
+                    Doctor doctor = doctorByUserId.get(user.getId());
+                    UserSession session = new UserSession(user, patient, doctor);
+                    if (patient != null) {
+                        String doctorName = doctorNameMap.get(patient.getPrimaryDoctorId());
+                        session.setAssignedDoctorName(doctorName != null ? doctorName : "—");
                     }
+                    sessions.add(session);
                 }
 
                 // Cuenta cuántos médicos y pacientes hay
-                long doctors  = allUsers.stream().filter(u -> "doctor".equals(u.getRole())).count();
-                long patients = allUsers.stream().filter(u -> "patient".equals(u.getRole())).count();
+                long doctors = allUsers.stream().filter(u -> "doctor".equals(u.getRoleId())).count();
+                long patients = allUsers.stream().filter(u -> "patient".equals(u.getRoleId())).count();
 
                 // Ejecuta en el hilo de la interfaz gráfica
                 Platform.runLater(() -> {
                     usersObservableList.clear();
-                    usersObservableList.addAll(allUsers);
+                    usersObservableList.addAll(sessions);
 
                     // Actualiza las etiquetas de estadísticas
                     lblTotalUsers.setText(String.valueOf(allUsers.size()));
@@ -162,7 +186,7 @@ public class AdminController {
         // Establece la condición de filtro
         filteredList.setPredicate(user -> {
             // Verifica que el rol coincida (o si está marcado "Todos")
-            boolean roleMatch = "Todos".equals(roleFilter) || roleFilter.equals(user.getRole());
+            boolean roleMatch = "Todos".equals(roleFilter) || roleFilter.equals(user.getRoleId());
 
             // Verifica que el texto sea encontrado en nombre, apellido o correo
             boolean textMatch = keyword.isEmpty()
@@ -208,35 +232,29 @@ public class AdminController {
         grid.setPrefWidth(440);
         grid.setStyle("-fx-background-color: #ffffff; -fx-padding: 20;");
 
-        Label lblHeader = new Label(selectedUser.getFirstName() + " " + selectedUser.getLastName());
+        Label lblHeader = new Label(displayName(selectedUser));
         lblHeader.setStyle("-fx-text-fill: #000000; -fx-font-size: 18px; -fx-font-weight: bold;");
         GridPane.setColumnSpan(lblHeader, 2);
         grid.add(lblHeader, 0, 0);
 
         int row = 1;
-        row = addDetailRow(grid, row, "UID",      selectedUser.getUid());
+        row = addDetailRow(grid, row, "User ID",   selectedUser.getUserId());
         row = addDetailRow(grid, row, "Correo",   selectedUser.getEmail());
         row = addDetailRow(grid, row, "Nombre",   selectedUser.getFirstName());
         row = addDetailRow(grid, row, "Apellido", selectedUser.getLastName());
-        row = addDetailRow(grid, row, "Rol",      selectedUser.getRole());
+        row = addDetailRow(grid, row, "Rol",      selectedUser.getRoleId());
 
-        if ("patient".equals(selectedUser.getRole())) {
+        if ("patient".equals(selectedUser.getRoleId())) {
             row = addDetailRow(grid, row, "Nacimiento", selectedUser.getBirthDate());
             row = addDetailRow(grid, row, "Género",     selectedUser.getGender());
             row = addDetailRow(grid, row, "Estatura",   selectedUser.getHeight() != null ? selectedUser.getHeight() + " m" : "—");
-            row = addDetailRow(grid, row, "Médico ID",  selectedUser.getAssignedDoctorId());
+            row = addDetailRow(grid, row, "Médico ID",  selectedUser.getPrimaryDoctorId());
         }
 
-        if ("doctor".equals(selectedUser.getRole())) {
-            final int finalRow = row;
-            new Thread(() -> {
-                try {
-                    int count = patientDAO.getPatientsByDoctor(selectedUser.getUid()).size();
-                    Platform.runLater(() -> addDetailRow(grid, finalRow, "Pacientes", count + " paciente(s)"));
-                } catch (Exception e) {
-                    Platform.runLater(() -> addDetailRow(grid, finalRow, "Pacientes", "Error al cargar"));
-                }
-            }).start();
+        if ("doctor".equals(selectedUser.getRoleId()) && selectedUser.getDoctor() != null) {
+            Doctor doctor = selectedUser.getDoctor();
+            row = addDetailRow(grid, row, "Especialidad", doctor.getSpecialtyId());
+            row = addDetailRow(grid, row, "Licencia", doctor.getLicenseNumber());
         }
 
         ScrollPane scrollPane = new ScrollPane(grid);
@@ -285,25 +303,37 @@ public class AdminController {
         }
 
         // no permite que un admin se elimine a sí mismo
-        if (selectedUser.getUid() != null && selectedUser.getUid().equals(loggedInAdmin.getUid())) {
+        if (selectedUser.getUserId() != null && selectedUser.getUserId().equals(loggedInAdmin.getUserId())) {
             lblStatus.setText("No puedes eliminar tu propia cuenta de administrador");
             lblStatus.setTextFill(Color.web("#ff9800"));
             return;
         }
 
-        String userId = selectedUser.getUid();
-        String userName = selectedUser.getFirstName() + " " + selectedUser.getLastName();
+        String userId = selectedUser.getUserId();
+        String userName = displayName(selectedUser);
         lblStatus.setText("Eliminando usuario: " + userName + "...");
         lblStatus.setTextFill(Color.web("#ffffff"));
 
         // Ejecuta la eliminación en un hilo de fondo para no bloquear la interfaz
         new Thread(() -> {
             try {
-                userDAO.deleteUser(userId);
+                if ("doctor".equals(selectedUser.getRoleId())) {
+                    String doctorId = selectedUser.getDoctorId();
+                    if (doctorId != null) {
+                        patientDAO.reassignPatients(doctorId, null);
+                        doctorDAO.delete(doctorId);
+                    }
+                }
 
-                // Si era un médico, reasigna sus pacientes a otro médico
-                if ("doctor".equals(selectedUser.getRole())) {
-                    patientDAO.reassignPatients(userId, null);
+                if ("patient".equals(selectedUser.getRoleId())) {
+                    String patientId = selectedUser.getPatientId();
+                    if (patientId != null) {
+                        patientDAO.delete(patientId);
+                    }
+                }
+
+                if (userId != null) {
+                    userDAO.delete(userId);
                 }
 
                 // Recarga la tabla en el hilo de la interfaz
@@ -335,22 +365,22 @@ public class AdminController {
         }
 
         // Crea un diálogo de opciones con los roles disponibles
-        ChoiceDialog<String> dialog = new ChoiceDialog<>(selectedUser.getRole(),
+        ChoiceDialog<String> dialog = new ChoiceDialog<>(selectedUser.getRoleId(),
                 "patient", "doctor", "admin");
         dialog.setTitle("Cambiar Rol");
-        dialog.setHeaderText("Usuario: " + selectedUser.getFirstName() + " " + selectedUser.getLastName());
+        dialog.setHeaderText("Usuario: " + displayName(selectedUser));
         dialog.setContentText("Selecciona el nuevo rol:");
         dialog.getDialogPane().setStyle("-fx-background-color: #1e1e1e; -fx-font-size: 13px;");
 
         // Si el usuario elige un nuevo rol
         dialog.showAndWait().ifPresent(newRole -> {
             // Si seleccionó el mismo rol, no hace nada
-            if (newRole.equals(selectedUser.getRole())) return;
+            if (newRole.equals(selectedUser.getRoleId())) return;
 
             // Actualiza el rol en la base de datos
             new Thread(() -> {
                 try {
-                    userDAO.updateUserRole(selectedUser.getUid(), newRole);
+                    userDAO.updateUserRole(selectedUser.getUserId(), newRole);
                     Platform.runLater(() -> {
                         loadAllUsers();  // Recarga la tabla
                         lblStatus.setText("Rol actualizado a: " + newRole);

@@ -2,13 +2,11 @@ package com.itc.healthtrack.models;
 
 import com.google.cloud.Timestamp;
 
-// Representa una medicion individual en el sistema (presion, glucosa, peso)
-public class Metric {
+// Represents a health metric entry for a patient
+public class HealthMetric {
     private String id;
     private String patientId;
     private Timestamp timestamp;
-    private String metricType;
-    private String notes;
     private Integer systolic;
     private Integer diastolic;
     private Integer heartRate;
@@ -16,10 +14,8 @@ public class Metric {
     private Double bmi;
     private Double glucoseLevel;
 
-    // Constructor requerido por Firebase
-    public Metric() {}
-
-    // Getters y Setters
+    // Required empty constructor for Firestore
+    public HealthMetric() {}
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -29,12 +25,6 @@ public class Metric {
 
     public Timestamp getTimestamp() { return timestamp; }
     public void setTimestamp(Timestamp timestamp) { this.timestamp = timestamp; }
-
-    public String getMetricType() { return metricType; }
-    public void setMetricType(String metricType) { this.metricType = metricType; }
-
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
 
     public Integer getSystolic() { return systolic; }
     public void setSystolic(Integer systolic) { this.systolic = systolic; }

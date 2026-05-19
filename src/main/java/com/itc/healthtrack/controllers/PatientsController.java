@@ -1,7 +1,12 @@
 package com.itc.healthtrack.controllers;
 
+import com.google.cloud.Timestamp;
+import com.itc.healthtrack.dao.DoctorDAO;
 import com.itc.healthtrack.dao.PatientDAO;
 import com.itc.healthtrack.dao.UserDAO;
+import com.itc.healthtrack.dto.UserSession;
+import com.itc.healthtrack.models.Doctor;
+import com.itc.healthtrack.models.Patient;
 import com.itc.healthtrack.models.User;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -11,6 +16,7 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -26,19 +32,20 @@ public class PatientsController {
     @FXML private DatePicker dpBirthDate;
 
     // Componentes de la tabla
-    @FXML private TableView<User> tablePatients;
-    @FXML private TableColumn<User, String> colFirstName, colLastName, colEmail, colGender;
+    @FXML private TableView<UserSession> tablePatients;
+    @FXML private TableColumn<UserSession, String> colFirstName, colLastName, colEmail, colGender;
 
     // Variables de logica de negocio
     private final PatientDAO patientDAO = new PatientDAO();
+    private final DoctorDAO doctorDAO = new DoctorDAO();
     private final UserDAO userDAO = new UserDAO();
-    private ObservableList<User> patientsObservableList = FXCollections.observableArrayList();
+    private ObservableList<UserSession> patientsObservableList = FXCollections.observableArrayList();
 
-    private User loggedInDoctor;
-    private User selectedPatient = null;
+    private UserSession loggedInDoctor;
+    private UserSession selectedPatient = null;
 
     // Metodo de inicializacion que recibe el medico actualmente logueado
-    public void initData(User doctor) {
+    public void initData(UserSession doctor) {
         this.loggedInDoctor = doctor;
         setupTable();
 
@@ -50,7 +57,7 @@ public class PatientsController {
 
     //Carga los pacientes desde Firestore y llena el formulario al seleccionar uno
     private void setupTable() {
-        // Vincula cada columna con su propiedad correspondiente del modelo User
+        // Vincula cada columna con su propiedad correspondiente del modelo UserSession
         colFirstName.setCellValueFactory(new PropertyValueFactory<>("firstName"));
         colLastName.setCellValueFactory(new PropertyValueFactory<>("lastName"));
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
@@ -71,12 +78,13 @@ public class PatientsController {
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> list = "admin".equals(loggedInDoctor.getRole())
-                        ? patientDAO.getAllPatients()
-                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
+                List<Patient> patients = "admin".equals(loggedInDoctor.getRoleId())
+                        ? patientDAO.getAll()
+                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getDoctorId());
+                List<UserSession> sessions = buildPatientSessions(patients);
                 Platform.runLater(() -> {
                     patientsObservableList.clear();
-                    patientsObservableList.addAll(list);
+                    patientsObservableList.addAll(sessions);
                 });
             } catch (Exception e) {
                 System.out.println("Error al cargar pacientes.");
@@ -84,30 +92,55 @@ public class PatientsController {
         }).start();
     }
 
+    private List<UserSession> buildPatientSessions(List<Patient> patients) throws Exception {
+        List<UserSession> sessions = new ArrayList<>();
+        for (Patient patient : patients) {
+            User user = userDAO.getById(patient.getUserId());
+            if (user != null) {
+                sessions.add(new UserSession(user, patient, null));
+            }
+        }
+        return sessions;
+    }
+
     @FXML
     protected void onSavePatient() {
         try {
             if (selectedPatient == null) {
                 // Si no hay ninguno seleccionado, creamos uno nuevo
-                User newPatient = new User();
+                User newUser = new User();
+                newUser.setEmail(txtEmail.getText());
+                if (!txtPassword.getText().isEmpty()) {
+                    newUser.setPassword(txtPassword.getText());
+                }
+                newUser.setRoleId("patient");
+                newUser.setRegisteredAt(Timestamp.now());
+
+                Patient newPatient = new Patient();
                 newPatient.setFirstName(txtFirstName.getText());
                 newPatient.setLastName(txtLastName.getText());
-                newPatient.setEmail(txtEmail.getText());
                 newPatient.setBirthDate(dpBirthDate.getValue() != null ? dpBirthDate.getValue().toString() : null);
                 newPatient.setGender(comboGender.getValue());
                 newPatient.setHeight(Double.parseDouble(txtHeight.getText()));
 
-                // Valores fijos obligatorios para pacientes
-                newPatient.setRole("patient");
-                newPatient.setAssignedDoctorId(loggedInDoctor.getUid());
-                if (!txtPassword.getText().isEmpty()) {
-                    newPatient.setPassword(txtPassword.getText());
-                }
-
                 // Guardamos en un hilo nuevo
                 new Thread(() -> {
                     try {
-                        userDAO.saveUser(newPatient); // Usamos UserDAO porque inserta el UID
+                        String doctorId = null;
+                        if ("doctor".equals(loggedInDoctor.getRoleId())) {
+                            doctorId = loggedInDoctor.getDoctorId();
+                        } else {
+                            List<Doctor> doctors = doctorDAO.getAll();
+                            if (!doctors.isEmpty()) {
+                                Doctor randomDoctor = doctors.get((int) (Math.random() * doctors.size()));
+                                doctorId = randomDoctor.getId();
+                            }
+                        }
+                        newPatient.setPrimaryDoctorId(doctorId);
+
+                        userDAO.save(newUser);
+                        newPatient.setUserId(newUser.getId());
+                        patientDAO.save(newPatient);
                         Platform.runLater(() -> {
                             onClearForm();
                             loadPatients();
@@ -118,16 +151,27 @@ public class PatientsController {
                 }).start();
             } else {
                 // Actualizar paciente existente
-                selectedPatient.setFirstName(txtFirstName.getText());
-                selectedPatient.setLastName(txtLastName.getText());
-                selectedPatient.setEmail(txtEmail.getText());
-                selectedPatient.setBirthDate(dpBirthDate.getValue() != null ? dpBirthDate.getValue().toString() : null);
-                selectedPatient.setGender(comboGender.getValue());
-                selectedPatient.setHeight(Double.parseDouble(txtHeight.getText()));
+                Patient patient = selectedPatient.getPatient();
+                User user = selectedPatient.getUser();
+                if (patient == null || user == null) {
+                    return;
+                }
+
+                patient.setFirstName(txtFirstName.getText());
+                patient.setLastName(txtLastName.getText());
+                patient.setBirthDate(dpBirthDate.getValue() != null ? dpBirthDate.getValue().toString() : null);
+                patient.setGender(comboGender.getValue());
+                patient.setHeight(Double.parseDouble(txtHeight.getText()));
+
+                user.setEmail(txtEmail.getText());
+                if (!txtPassword.getText().isEmpty()) {
+                    user.setPassword(txtPassword.getText());
+                }
 
                 new Thread(() -> {
                     try {
-                        patientDAO.updatePatient(selectedPatient);
+                        userDAO.update(user);
+                        patientDAO.update(patient);
                         Platform.runLater(() -> {
                             onClearForm();
                             loadPatients();
@@ -148,7 +192,12 @@ public class PatientsController {
         if (selectedPatient != null) {
             new Thread(() -> {
                 try {
-                    patientDAO.deletePatient(selectedPatient.getUid());
+                    if (selectedPatient.getPatientId() != null) {
+                        patientDAO.delete(selectedPatient.getPatientId());
+                    }
+                    if (selectedPatient.getUserId() != null) {
+                        userDAO.delete(selectedPatient.getUserId());
+                    }
                     Platform.runLater(() -> {
                         onClearForm();
                         loadPatients();
@@ -177,7 +226,7 @@ public class PatientsController {
 
     /*Llena los campos del formulario con los datos del paciente seleccionado
      Se usa para editar un paciente existente*/
-    private void fillForm(User p) {
+    private void fillForm(UserSession p) {
         txtFirstName.setText(p.getFirstName());
         txtLastName.setText(p.getLastName());
         txtEmail.setText(p.getEmail());

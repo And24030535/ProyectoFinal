@@ -2,7 +2,7 @@ package com.itc.healthtrack.models;
 
 import com.google.cloud.Timestamp;
 
-//Representa una recomendación o alerta médica enviada a un paciente
+// Represents a recommendation or alert sent to a patient
 public class Recommendation {
     private String id;
     private String patientId;
@@ -12,10 +12,8 @@ public class Recommendation {
     private String message;
     private Boolean isRead;
 
-    // Constructor vacío requerido por Firestore
+    // Required empty constructor for Firestore
     public Recommendation() {}
-
-    // Getters y Setters
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

@@ -4,10 +4,13 @@ import com.google.cloud.Timestamp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.itc.healthtrack.dao.MetricDAO;
+import com.itc.healthtrack.dao.HealthMetricDAO;
 import com.itc.healthtrack.dao.PatientDAO;
 import com.itc.healthtrack.dao.RecommendationDAO;
-import com.itc.healthtrack.models.Metric;
+import com.itc.healthtrack.dao.UserDAO;
+import com.itc.healthtrack.dto.UserSession;
+import com.itc.healthtrack.models.HealthMetric;
+import com.itc.healthtrack.models.Patient;
 import com.itc.healthtrack.models.Recommendation;
 import com.itc.healthtrack.models.User;
 import com.itc.healthtrack.services.NotificationService;
@@ -22,13 +25,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 //Controlador para la gestión de recomendaciones clínicas
 public class RecommendationsController {
 
     //Elementos de interfaz
-    @FXML private ComboBox<User> comboPatients;     // ComboBox para seleccionar paciente
+    @FXML private ComboBox<UserSession> comboPatients;     // ComboBox para seleccionar paciente
     @FXML private TextArea txtRecommendations;      // Área de texto para mostrar análisis/recomendaciones
     @FXML private TextArea txtWebService;           // Área para mostrar datos de servicios web (FDA)
     @FXML private TextArea txtNutrition;            // Área para mostrar información nutricional (USDA)
@@ -36,10 +40,11 @@ public class RecommendationsController {
 
     // Acceso a datos
     private final PatientDAO patientDAO = new PatientDAO();
-    private final MetricDAO metricDAO = new MetricDAO();
+    private final UserDAO userDAO = new UserDAO();
+    private final HealthMetricDAO metricDAO = new HealthMetricDAO();
     private final RecommendationDAO recommendationDAO = new RecommendationDAO();
     private final NotificationService notificationService = new NotificationService();
-    private User loggedInDoctor;                     // Usuario médico/admin logeado
+    private UserSession loggedInDoctor;                     // Usuario médico/admin logeado
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();  // Cliente HTTP para APIs externas
 
     private ObservableList<Recommendation> historyItems;  // Lista observable para el historial
@@ -47,25 +52,25 @@ public class RecommendationsController {
     //Inicializa el controlador con los datos del usuario logeado
     //pacientes ven solo sus datos, médicos/admin ven lista de pacientes
 
-    public void initData(User doctor) {
+    public void initData(UserSession doctor) {
         this.loggedInDoctor = doctor;
         setupHistory();
 
-        if ("patient".equals(doctor.getRole())) {
+        if ("patient".equals(doctor.getRoleId())) {
             comboPatients.getItems().add(doctor);
             comboPatients.getSelectionModel().selectFirst();
             comboPatients.setDisable(true);
-            // Asegura que el UID no sea nulo
-            String uid = doctor.getUid() != null ? doctor.getUid() : "";
-            System.out.println("UID paciente para historial: " + uid); // temporal
-            loadRecommendationHistory(uid);
+            // Asegura que el ID no sea nulo
+            String patientId = doctor.getPatientId() != null ? doctor.getPatientId() : "";
+            System.out.println("ID paciente para historial: " + patientId); // temporal
+            loadRecommendationHistory(patientId);
         } else {
             loadPatients();
             // Recargar historial cuando cambia el paciente seleccionado
             comboPatients.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal != null) {
                     historyItems.clear();
-                    loadRecommendationHistory(newVal.getUid());
+                    loadRecommendationHistory(newVal.getPatientId());
                 }
             });
         }
@@ -106,15 +111,27 @@ public class RecommendationsController {
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> patients = "admin".equals(loggedInDoctor.getRole())
-                        ? patientDAO.getAllPatients()
-                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
-                Platform.runLater(() -> comboPatients.setItems(FXCollections.observableArrayList(patients)));
+                List<Patient> patients = "admin".equals(loggedInDoctor.getRoleId())
+                        ? patientDAO.getAll()
+                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getDoctorId());
+                List<UserSession> sessions = buildPatientSessions(patients);
+                Platform.runLater(() -> comboPatients.setItems(FXCollections.observableArrayList(sessions)));
             } catch (Exception e) {
                 Platform.runLater(() -> txtRecommendations.setText("Error al cargar la lista de pacientes"));
                 e.printStackTrace();
             }
         }).start();
+    }
+
+    private List<UserSession> buildPatientSessions(List<Patient> patients) throws Exception {
+        List<UserSession> sessions = new ArrayList<>();
+        for (Patient patient : patients) {
+            User user = userDAO.getById(patient.getUserId());
+            if (user != null) {
+                sessions.add(new UserSession(user, patient, null));
+            }
+        }
+        return sessions;
     }
 
     //Carga recomendaciones pasadas para el paciente dado y las muestra en listHistory
@@ -124,7 +141,7 @@ public class RecommendationsController {
         Runnable backgroundTask = () -> {
             try {
                 // 2. Consultamos la base de datos de Firebase (esto requiere conexión a internet y toma tiempo)
-                List<Recommendation> history = recommendationDAO.getRecommendationsByPatient(patientId);
+                List<Recommendation> history = recommendationDAO.getByPatientId(patientId);
 
                 // 3. Definimos la tarea visual que modificará los componentes de la pantalla
                 Runnable screenUpdate = () -> {
@@ -149,7 +166,7 @@ public class RecommendationsController {
      Consulta APIs externas (clima, FDA, nutrición) y guarda el análisis en Firestore */
     @FXML
     protected void onAnalyzePatient() {
-        User selected = comboPatients.getValue();
+        UserSession selected = comboPatients.getValue();
         if (selected == null) return;
 
         txtRecommendations.setText("Analizando datos del paciente...");
@@ -158,7 +175,7 @@ public class RecommendationsController {
 
         new Thread(() -> {
             try {
-                List<Metric> history = metricDAO.getMetricsByPatient(selected.getUid());
+                List<HealthMetric> history = metricDAO.getByPatientId(selected.getPatientId());
                 String weatherData = fetchWeatherData();
                 String analysis = generateAlgorithmicRecommendations(history, weatherData);
 
@@ -168,7 +185,7 @@ public class RecommendationsController {
                             "Análisis de tendencias detectó una progresión de riesgo en tus métricas. Consulta a tu médico.");
                     // Solo enviar notificación al médico cuando el usuario logeado es médico o admin
                     if (loggedInDoctor != null
-                            && ("doctor".equals(loggedInDoctor.getRole()) || "admin".equals(loggedInDoctor.getRole()))) {
+                            && ("doctor".equals(loggedInDoctor.getRoleId()) || "admin".equals(loggedInDoctor.getRoleId()))) {
                         notificationService.notifyDoctor(loggedInDoctor,
                                 "ALERTA DE TENDENCIA: El paciente " + selected.getFirstName()
                                         + " " + selected.getLastName()
@@ -177,7 +194,7 @@ public class RecommendationsController {
                 }
 
                 // Persistir análisis en Firestore y refrescar lista de historial después de guardar
-                persistRecommendation(selected.getUid(), analysis);
+                persistRecommendation(selected.getPatientId(), analysis);
 
                 // Obtener datos FDA
                 fetchExternalMedicalData();
@@ -235,14 +252,14 @@ public class RecommendationsController {
     de riesgo persistente (ej: tres lecturas hipertensivas o hiperglucémicas seguidas).
     Se requieren al menos tres lecturas porque un valor anormal único puede ser una anomalía aislada,
     mientras que tres valores críticos consecutivos indican una tendencia genuina*/
-    private boolean hasRiskProgression(List<Metric> history) {
+    private boolean hasRiskProgression(List<HealthMetric> history) {
         if (history == null || history.size() < 3) return false;
 
         int hypertensiveCount = 0;
         int hyperglycemicCount = 0;
 
         for (int i = 0; i < Math.min(3, history.size()); i++) {
-            Metric m = history.get(i);
+            HealthMetric m = history.get(i);
             if (m.getSystolic() != null && m.getSystolic() >= 140) hypertensiveCount++;
             if (m.getGlucoseLevel() != null && m.getGlucoseLevel() > 125) hyperglycemicCount++;
         }
@@ -252,12 +269,12 @@ public class RecommendationsController {
 
     /*recomendaciones basado en reglas que relaciona métricas del paciente
      con condiciones climáticas y guías nutricionales*/
-    private String generateAlgorithmicRecommendations(List<Metric> history, String weatherData) {
+    private String generateAlgorithmicRecommendations(List<HealthMetric> history, String weatherData) {
         if (history == null || history.isEmpty()) {
             return "No hay registros clínicos suficientes para generar un análisis.";
         }
 
-        Metric latest = history.get(0);
+        HealthMetric latest = history.get(0);
         StringBuilder report = new StringBuilder();
         report.append("ANÁLISIS CLÍNICO — HealthTrack \n");
         report.append("Última evaluación: ").append(latest.getTimestamp().toDate().toString()).append("\n");
@@ -424,7 +441,7 @@ public class RecommendationsController {
                 rec.setTitle("Análisis Clínico Automático");
                 rec.setMessage(analysisText);
                 rec.setIsRead(false);
-                recommendationDAO.saveRecommendation(rec);
+                recommendationDAO.save(rec);
                 // Refrescar la lista de historial una vez confirmado el guardado
                 loadRecommendationHistory(patientId);
             } catch (Exception e) {
@@ -434,11 +451,11 @@ public class RecommendationsController {
     }
 
     //Elige una consulta de búsqueda nutricional que coincida con los últimos valores clínicos del paciente
-    private String determineFoodQuery(List<Metric> history) {
+    private String determineFoodQuery(List<HealthMetric> history) {
         if (history == null || history.isEmpty()) {
             return "mediterranean diet healthy foods";
         }
-        Metric latest = history.get(0);
+        HealthMetric latest = history.get(0);
 
         if (latest.getGlucoseLevel() != null && latest.getGlucoseLevel() > 125) {
             return "low glycemic index vegetables";

@@ -1,8 +1,11 @@
 package com.itc.healthtrack.controllers;
 
-import com.itc.healthtrack.dao.MetricDAO;
+import com.itc.healthtrack.dao.HealthMetricDAO;
 import com.itc.healthtrack.dao.PatientDAO;
-import com.itc.healthtrack.models.Metric;
+import com.itc.healthtrack.dao.UserDAO;
+import com.itc.healthtrack.dto.UserSession;
+import com.itc.healthtrack.models.HealthMetric;
+import com.itc.healthtrack.models.Patient;
 import com.itc.healthtrack.models.User;
 import com.itextpdf.io.image.ImageData;
 import com.itextpdf.io.image.ImageDataFactory;
@@ -39,20 +42,21 @@ import java.util.List;
 public class ReportsController {
 
     // Elementos de interfaz
-    @FXML private ComboBox<User> comboPatients;  // ComboBox para seleccionar el paciente
+    @FXML private ComboBox<UserSession> comboPatients;  // ComboBox para seleccionar el paciente
     @FXML private Label lblStatus;               // Etiqueta para mensajes de estado/progreso
 
     // Acceso a datos
     private final PatientDAO patientDAO = new PatientDAO();
-    private final MetricDAO metricDAO = new MetricDAO();
-    private User loggedInDoctor;
+    private final UserDAO userDAO = new UserDAO();
+    private final HealthMetricDAO metricDAO = new HealthMetricDAO();
+    private UserSession loggedInDoctor;
 
     /*Inicializa el controlador con los datos del usuario logeado
      Si es un paciente, muestra solo sus propios datos
      Si es médico/admin, carga la lista de pacientes*/
-    public void initData(User doctor) {
+    public void initData(UserSession doctor) {
         this.loggedInDoctor = doctor;
-        if ("patient".equals(doctor.getRole())) {
+        if ("patient".equals(doctor.getRoleId())) {
             comboPatients.getItems().add(doctor);
             comboPatients.getSelectionModel().selectFirst();
             comboPatients.setDisable(true);
@@ -65,11 +69,12 @@ public class ReportsController {
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> patients = "admin".equals(loggedInDoctor.getRole())
-                        ? patientDAO.getAllPatients()
-                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
+                List<Patient> patients = "admin".equals(loggedInDoctor.getRoleId())
+                        ? patientDAO.getAll()
+                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getDoctorId());
+                List<UserSession> sessions = buildPatientSessions(patients);
                 Platform.runLater(() -> {
-                    comboPatients.setItems(FXCollections.observableArrayList(patients));
+                    comboPatients.setItems(FXCollections.observableArrayList(sessions));
                 });
             } catch (Exception e) {
                 e.printStackTrace();
@@ -77,9 +82,20 @@ public class ReportsController {
         }).start();
     }
 
+    private List<UserSession> buildPatientSessions(List<Patient> patients) throws Exception {
+        List<UserSession> sessions = new ArrayList<>();
+        for (Patient patient : patients) {
+            User user = userDAO.getById(patient.getUserId());
+            if (user != null) {
+                sessions.add(new UserSession(user, patient, null));
+            }
+        }
+        return sessions;
+    }
+
     @FXML
     protected void onExportPDF() {
-        User selectedPatient = comboPatients.getValue();
+        UserSession selectedPatient = comboPatients.getValue();
 
         if (selectedPatient == null) {
             lblStatus.setText("Por favor, selecciona un paciente primero.");
@@ -107,7 +123,7 @@ public class ReportsController {
             new Thread(() -> {
                 try {
                     // Descargar todo el historial del paciente
-                    List<Metric> history = metricDAO.getMetricsByPatient(selectedPatient.getUid());
+                    List<HealthMetric> history = metricDAO.getByPatientId(selectedPatient.getPatientId());
 
                     // Los snapshots de gráficos deben tomarse en el hilo FX
                     Platform.runLater(() -> {
@@ -152,7 +168,7 @@ public class ReportsController {
 
     /*Utiliza la libreria iText para dibujar los elementos dentro del PDF
      Incluye una tabla con el historial y, si estan disponibles, graficos*/
-    private void generatePDF(String destPath, User patient, List<Metric> history,
+    private void generatePDF(String destPath, UserSession patient, List<HealthMetric> history,
                               List<byte[]> chartImages) throws Exception {
         // Inicializar el escritor de PDF
         PdfWriter writer = new PdfWriter(destPath);
@@ -163,8 +179,8 @@ public class ReportsController {
         document.add(new Paragraph("Reporte Clínico - HealthTrack Community").setBold().setFontSize(18));
         document.add(new Paragraph("Paciente: " + patient.getFirstName() + " " + patient.getLastName()));
         if (loggedInDoctor != null
-                && ("doctor".equals(loggedInDoctor.getRole()) || "admin".equals(loggedInDoctor.getRole()))) {
-            document.add(new Paragraph("Médico a cargo: " + loggedInDoctor.getFirstName() + " " + loggedInDoctor.getLastName()));
+                && ("doctor".equals(loggedInDoctor.getRoleId()) || "admin".equals(loggedInDoctor.getRoleId()))) {
+            document.add(new Paragraph("Médico a cargo: " + buildDoctorDisplayName()));
         }
         document.add(new Paragraph(" ")); // Salto de linea
 
@@ -180,7 +196,7 @@ public class ReportsController {
         table.addHeaderCell("Peso (kg)");
 
         // Iterar sobre las metricas y agregarlas como filas a la tabla
-        for (Metric m : history) {
+        for (HealthMetric m : history) {
             String date = m.getTimestamp() != null ? m.getTimestamp().toDate().toString() : "N/A";
             String bp = (m.getSystolic() != null && m.getDiastolic() != null) ? m.getSystolic() + "/" + m.getDiastolic() : "-";
             String pulse = m.getHeartRate() != null ? String.valueOf(m.getHeartRate()) : "-";
@@ -213,10 +229,17 @@ public class ReportsController {
         document.close();
     }
 
+    private String buildDoctorDisplayName() {
+        if (loggedInDoctor.getFirstName() != null && loggedInDoctor.getLastName() != null) {
+            return loggedInDoctor.getFirstName() + " " + loggedInDoctor.getLastName();
+        }
+        return loggedInDoctor.getEmail() != null ? loggedInDoctor.getEmail() : "—";
+    }
+
     /*Crea un gráfico de línea para presión arterial y un gráfico de barras para promedios.
      Convierte los gráficos a imágenes PNG para incrustarlos en el PDF
      Debe ser llamado desde el hilo de aplicación de JavaFX*/
-    private List<byte[]> buildChartImages(List<Metric> history) {
+    private List<byte[]> buildChartImages(List<HealthMetric> history) {
         List<byte[]> images = new ArrayList<>();
 
         // Gráfico presión arterial
@@ -236,7 +259,7 @@ public class ReportsController {
 
             // Llenar las descripciones con datos (en orden inverso para mostrar antiguos a la izquierda)
             for (int i = history.size() - 1; i >= 0; i--) {
-                Metric m = history.get(i);
+                HealthMetric m = history.get(i);
                 if (m.getSystolic() != null && m.getDiastolic() != null && m.getTimestamp() != null) {
                     String label = m.getTimestamp().toDate().toString().substring(4, 10);
                     systolicSeries.getData().add(new XYChart.Data<>(label, m.getSystolic()));
@@ -269,7 +292,7 @@ public class ReportsController {
             double glTotal = 0, weightTotal = 0;
             int sysCount = 0, diaCount = 0, hrCount = 0, glCount = 0, weightCount = 0;
 
-            for (Metric m : history) {
+            for (HealthMetric m : history) {
                 if (m.getSystolic() != null)     { sysTotal    += m.getSystolic();    sysCount++;    }
                 if (m.getDiastolic() != null)    { diaTotal    += m.getDiastolic();   diaCount++;    }
                 if (m.getHeartRate() != null)    { hrTotal     += m.getHeartRate();   hrCount++;     }
@@ -325,7 +348,7 @@ public class ReportsController {
     //Exporta el historial clínico a un archivo Excel (.xlsx) con formato
     @FXML
     protected void onExportExcel() {
-        User selectedPatient = comboPatients.getValue();
+        UserSession selectedPatient = comboPatients.getValue();
 
         if (selectedPatient == null) {
             lblStatus.setText("Por favor, selecciona un paciente primero.");
@@ -349,7 +372,7 @@ public class ReportsController {
             // Generar el archivo en hilo de fondo
             new Thread(() -> {
                 try {
-                    List<Metric> history = metricDAO.getMetricsByPatient(selectedPatient.getUid());
+                    List<HealthMetric> history = metricDAO.getByPatientId(selectedPatient.getPatientId());
                     generateExcel(file.getAbsolutePath(), selectedPatient, history);
 
                     Platform.runLater(() -> {
@@ -369,7 +392,7 @@ public class ReportsController {
 
     /*Utiliza la librería Apache POI para construir y exportar un archivo Excel
     Incluye información del paciente, médico y tabla con el historial de métricas  */
-    private void generateExcel(String destPath, User patient, List<Metric> history) throws Exception {
+    private void generateExcel(String destPath, UserSession patient, List<HealthMetric> history) throws Exception {
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("Historial Clínico");
 
@@ -388,9 +411,9 @@ public class ReportsController {
 
         // Información del médico si está disponible
         if (loggedInDoctor != null
-                && ("doctor".equals(loggedInDoctor.getRole()) || "admin".equals(loggedInDoctor.getRole()))) {
+                && ("doctor".equals(loggedInDoctor.getRoleId()) || "admin".equals(loggedInDoctor.getRoleId()))) {
             Row doctorRow = sheet.createRow(2);
-            doctorRow.createCell(0).setCellValue("Médico a cargo: " + loggedInDoctor.getFirstName() + " " + loggedInDoctor.getLastName());
+            doctorRow.createCell(0).setCellValue("Médico a cargo: " + buildDoctorDisplayName());
         }
 
         // Encabezados de la tabla
@@ -404,7 +427,7 @@ public class ReportsController {
 
         // Llenado de datos
         int rowNum = 5;
-        for (Metric m : history) {
+        for (HealthMetric m : history) {
             Row row = sheet.createRow(rowNum++);
 
             String date = m.getTimestamp() != null ? m.getTimestamp().toDate().toString() : "N/A";
