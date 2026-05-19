@@ -4,9 +4,7 @@ import com.google.cloud.Timestamp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.itc.healthtrack.dao.MetricDAO;
-import com.itc.healthtrack.dao.PatientDAO;
-import com.itc.healthtrack.dao.RecommendationDAO;
+import com.itc.healthtrack.dao.GenericDAO;
 import com.itc.healthtrack.models.Metric;
 import com.itc.healthtrack.models.Recommendation;
 import com.itc.healthtrack.models.User;
@@ -22,6 +20,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 //Controlador para la gestión de recomendaciones clínicas
@@ -35,9 +36,9 @@ public class RecommendationsController {
     @FXML private ListView<Recommendation> listHistory;  // Lista de recomendaciones históricas
 
     // Acceso a datos
-    private final PatientDAO patientDAO = new PatientDAO();
-    private final MetricDAO metricDAO = new MetricDAO();
-    private final RecommendationDAO recommendationDAO = new RecommendationDAO();
+    private final GenericDAO<User> userDao = new GenericDAO<>(User.class, "users");
+    private final GenericDAO<Metric> metricDao = new GenericDAO<>(Metric.class, "metrics");
+    private final GenericDAO<Recommendation> recommendationDao = new GenericDAO<>(Recommendation.class, "recommendations");
     private final NotificationService notificationService = new NotificationService();
     private User loggedInDoctor;                     // Usuario médico/admin logeado
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();  // Cliente HTTP para APIs externas
@@ -106,9 +107,7 @@ public class RecommendationsController {
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> patients = "admin".equals(loggedInDoctor.getRole())
-                        ? patientDAO.getAllPatients()
-                        : patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
+                List<User> patients = getPatientsForUser(loggedInDoctor);
                 Platform.runLater(() -> comboPatients.setItems(FXCollections.observableArrayList(patients)));
             } catch (Exception e) {
                 Platform.runLater(() -> txtRecommendations.setText("Error al cargar la lista de pacientes"));
@@ -124,7 +123,7 @@ public class RecommendationsController {
         Runnable backgroundTask = () -> {
             try {
                 // 2. Consultamos la base de datos de Firebase (esto requiere conexión a internet y toma tiempo)
-                List<Recommendation> history = recommendationDAO.getRecommendationsByPatient(patientId);
+                List<Recommendation> history = getRecommendationsByPatientId(patientId);
 
                 // 3. Definimos la tarea visual que modificará los componentes de la pantalla
                 Runnable screenUpdate = () -> {
@@ -158,7 +157,7 @@ public class RecommendationsController {
 
         new Thread(() -> {
             try {
-                List<Metric> history = metricDAO.getMetricsByPatient(selected.getUid());
+                List<Metric> history = getMetricsByPatientId(selected.getUid());
                 String weatherData = fetchWeatherData();
                 String analysis = generateAlgorithmicRecommendations(history, weatherData);
 
@@ -424,7 +423,11 @@ public class RecommendationsController {
                 rec.setTitle("Análisis Clínico Automático");
                 rec.setMessage(analysisText);
                 rec.setIsRead(false);
-                recommendationDAO.saveRecommendation(rec);
+                // Genera un ID nuevo para la recomendación
+                String newId = recommendationDao.createDocumentId();
+                // Asigna el ID y guarda la recomendación completa
+                rec.setId(newId);
+                recommendationDao.save(newId, rec);
                 // Refrescar la lista de historial una vez confirmado el guardado
                 loadRecommendationHistory(patientId);
             } catch (Exception e) {
@@ -530,5 +533,81 @@ public class RecommendationsController {
         } catch (Exception e) {
             return "Error al procesar la respuesta nutricional: " + e.getMessage();
         }
+    }
+
+    // Obtiene la lista de pacientes visibles para el usuario actual
+    private List<User> getPatientsForUser(User user) throws Exception {
+        // Lista final de pacientes
+        List<User> result = new ArrayList<>();
+        // Consulta todos los usuarios con rol de paciente
+        List<User> patients = userDao.getByField("role", "patient");
+        // Filtra según el rol del usuario logeado
+        for (User patient : patients) {
+            if ("admin".equals(user.getRole())) {
+                result.add(patient);
+            } else if (user.getUid() != null && user.getUid().equals(patient.getAssignedDoctorId())) {
+                result.add(patient);
+            }
+        }
+        // Retorna la lista filtrada
+        return result;
+    }
+
+    // Obtiene el historial de métricas de un paciente y lo ordena por fecha
+    private List<Metric> getMetricsByPatientId(String patientId) throws Exception {
+        // Consulta todas las métricas del paciente
+        List<Metric> metrics = metricDao.getByField("patientId", patientId);
+        // Ordena las métricas de más reciente a más antigua
+        sortMetricsByTimestamp(metrics);
+        // Devuelve la lista ordenada
+        return metrics;
+    }
+
+    // Obtiene las recomendaciones de un paciente y las ordena por fecha
+    private List<Recommendation> getRecommendationsByPatientId(String patientId) throws Exception {
+        // Consulta todas las recomendaciones del paciente
+        List<Recommendation> recommendations = recommendationDao.getByField("patientId", patientId);
+        // Ordena las recomendaciones de más reciente a más antigua
+        sortRecommendationsByTimestamp(recommendations);
+        // Devuelve la lista ordenada
+        return recommendations;
+    }
+
+    // Ordena una lista de métricas por timestamp descendente
+    private void sortMetricsByTimestamp(List<Metric> metrics) {
+        Collections.sort(metrics, new Comparator<Metric>() {
+            @Override
+            public int compare(Metric first, Metric second) {
+                if (first.getTimestamp() == null && second.getTimestamp() == null) {
+                    return 0;
+                }
+                if (first.getTimestamp() == null) {
+                    return 1;
+                }
+                if (second.getTimestamp() == null) {
+                    return -1;
+                }
+                return second.getTimestamp().compareTo(first.getTimestamp());
+            }
+        });
+    }
+
+    // Ordena una lista de recomendaciones por fecha de generación descendente
+    private void sortRecommendationsByTimestamp(List<Recommendation> recommendations) {
+        Collections.sort(recommendations, new Comparator<Recommendation>() {
+            @Override
+            public int compare(Recommendation first, Recommendation second) {
+                if (first.getGeneratedAt() == null && second.getGeneratedAt() == null) {
+                    return 0;
+                }
+                if (first.getGeneratedAt() == null) {
+                    return 1;
+                }
+                if (second.getGeneratedAt() == null) {
+                    return -1;
+                }
+                return second.getGeneratedAt().compareTo(first.getGeneratedAt());
+            }
+        });
     }
 }
