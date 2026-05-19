@@ -1,15 +1,30 @@
 package com.itc.healthtrack.controllers;
 
+import com.google.cloud.Timestamp;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.UserRecord;
+import com.itc.healthtrack.dao.DoctorDAO;
 import com.itc.healthtrack.dao.PatientDAO;
-import com.itc.healthtrack.dao.UserDAO;
-import com.itc.healthtrack.models.User;
+import com.itc.healthtrack.dao.RoleDAO;
+import com.itc.healthtrack.dao.SpecialtyDAO;
+import com.itc.healthtrack.dao.UserProfileDAO;
+import com.itc.healthtrack.models.Doctor;
+import com.itc.healthtrack.models.Patient;
+import com.itc.healthtrack.models.Role;
+import com.itc.healthtrack.models.Specialty;
+import com.itc.healthtrack.models.UserProfile;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.DatePicker;
+import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.TextField;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import org.kordamp.bootstrapfx.BootstrapFX;
@@ -17,25 +32,28 @@ import org.kordamp.bootstrapfx.BootstrapFX;
 import java.util.List;
 
 /*Controlador que gestiona el registro de nuevos usuarios
- Valida los datos, guarda en Firestore y asigna un doctor automáticamente para pacientes*/
+  Valida los datos, crea el usuario en Firebase Auth y luego crea sus documentos en Firestore*/
 public class RegisterController {
 
     // Elementos de formulario
-    @FXML private TextField txtFirstName;           // Campo: Nombre
-    @FXML private TextField txtLastName;            // Campo: Apellido
-    @FXML private TextField txtEmail;               // Campo: Email
-    @FXML private TextField txtHeight;              // Campo: Estatura
-    @FXML private DatePicker dpBirthDate;           // Campo: Fecha de nacimiento
+    @FXML private TextField txtFirstName;            // Campo: Nombre
+    @FXML private TextField txtLastName;             // Campo: Apellido
+    @FXML private TextField txtEmail;                // Campo: Email
+    @FXML private TextField txtHeight;               // Campo: Estatura
+    @FXML private DatePicker dpBirthDate;            // Campo: Fecha de nacimiento
     @FXML private PasswordField txtPassword;         // Campo: Contraseña
     @FXML private PasswordField txtConfirmPassword;  // Campo: Confirmar contraseña
-    @FXML private ComboBox<String> comboGender;     // ComboBox: Género
-    @FXML private ComboBox<String> comboRole;       // ComboBox: Rol (Paciente/Doctor)
-    @FXML private Label lblStatus;                  // Etiqueta de estado/errores
-    @FXML private Button btnRegister;               // Botón de registro
+    @FXML private ComboBox<String> comboGender;      // ComboBox: Género
+    @FXML private ComboBox<String> comboRole;        // ComboBox: Rol (Paciente/Doctor)
+    @FXML private Label lblStatus;                   // Etiqueta de estado/errores
+    @FXML private Button btnRegister;                // Botón de registro
 
-    // Acdeso a datos
+    // Acceso a datos
+    private final RoleDAO roleDAO = new RoleDAO();
+    private final UserProfileDAO userProfileDAO = new UserProfileDAO();
     private final PatientDAO patientDAO = new PatientDAO();
-    private final UserDAO userDAO = new UserDAO();
+    private final DoctorDAO doctorDAO = new DoctorDAO();
+    private final SpecialtyDAO specialtyDAO = new SpecialtyDAO();
 
     // Inicializa los ComboBox con opciones de género y rol
     @FXML
@@ -46,7 +64,8 @@ public class RegisterController {
     }
 
     /*Procesa el registro de un nuevo usuario.
-     Valida todos los campos, guarda el usuario en Firestore y asigna un doctor automáticamente si es paciente*/
+      Paso 1: Crear credenciales en Firebase Auth.
+      Paso 2: Crear documentos UserProfile y Patient/Doctor en Firestore.*/
     @FXML
     protected void onRegister(ActionEvent event) {
         String firstName = txtFirstName.getText().trim();
@@ -54,21 +73,19 @@ public class RegisterController {
         String email = txtEmail.getText().trim();
         String password = txtPassword.getText();
         String confirmPassword = txtConfirmPassword.getText();
-        String role = comboRole.getValue();
+        String roleLabel = comboRole.getValue();
 
-        // Mapear roles en español a inglés para consistencia con el sistema
-        final String mappedRole;
-        if ("Paciente".equals(role)) {
-            mappedRole = "patient";
-        } else if ("Doctor".equals(role)) {
-            mappedRole = "doctor";
-        } else if ("Admin".equals(role)) {
-            mappedRole = "admin";
+        // Mapear roles en español a ingles para consistencia
+        final String roleName;
+        if ("Paciente".equals(roleLabel)) {
+            roleName = "patient";
+        } else if ("Doctor".equals(roleLabel)) {
+            roleName = "doctor";
         } else {
-            mappedRole = "patient"; // por defecto: paciente
+            roleName = "patient";
         }
 
-        // Validaciones básicas
+        // Validaciones basicas de campos
         if (firstName.isEmpty() || lastName.isEmpty() || email.isEmpty() || password.isEmpty()) {
             showStatus("Por favor, completa todos los campos obligatorios", false);
             return;
@@ -88,46 +105,65 @@ public class RegisterController {
 
         new Thread(() -> {
             try {
-                // Crear nuevo usuario
-                User newUser = new User();
-                newUser.setFirstName(firstName);
-                newUser.setLastName(lastName);
-                newUser.setEmail(email);
-                newUser.setPassword(password);
-                newUser.setRole(mappedRole);
-                newUser.setGender(comboGender.getValue());
+                // Paso 1: Crear el usuario en Firebase Authentication
+                UserRecord.CreateRequest request = new UserRecord.CreateRequest()
+                        .setEmail(email)
+                        .setPassword(password);
+                UserRecord authUser = FirebaseAuth.getInstance().createUser(request);
 
-                if (dpBirthDate.getValue() != null) {
-                    newUser.setBirthDate(dpBirthDate.getValue().toString());
-                }
+                // Paso 2: Obtener o crear el rol en Firestore
+                Role role = getOrCreateRole(roleName);
 
-                // Validar y parsear la altura
-                String heightText = txtHeight.getText().trim();
-                if (!heightText.isEmpty()) {
-                    try {
-                        newUser.setHeight(Double.parseDouble(heightText));
-                    } catch (NumberFormatException e) {
-                        Platform.runLater(() -> {
-                            showStatus("Altura inválida.\n Verifica que sea un número decimal (ej: 1.75).", false);
-                            btnRegister.setDisable(false);
-                        });
-                        return;
+                // Paso 3: Crear el perfil basico del usuario en Firestore
+                UserProfile userProfile = new UserProfile();
+                userProfile.setAuthUid(authUser.getUid());
+                userProfile.setRoleId(role.getId());
+                userProfile.setEmail(email);
+                userProfile.setRegisteredAt(Timestamp.now());
+                userProfileDAO.saveUserProfile(userProfile);
+
+                // Paso 4: Crear el documento especifico del rol (paciente o doctor)
+                if ("patient".equals(roleName)) {
+                    Patient patient = new Patient();
+                    patient.setUserProfileId(userProfile.getId());
+                    patient.setFirstName(firstName);
+                    patient.setLastName(lastName);
+                    patient.setGender(comboGender.getValue());
+                    patient.setBirthDate(dpBirthDate.getValue() != null ? dpBirthDate.getValue().toString() : null);
+
+                    // Validar y asignar altura si se ingreso
+                    String heightText = txtHeight.getText().trim();
+                    if (!heightText.isEmpty()) {
+                        try {
+                            patient.setHeight(Double.parseDouble(heightText));
+                        } catch (NumberFormatException e) {
+                            Platform.runLater(() -> {
+                                showStatus("Altura inválida. Usa un número decimal (ej: 1.75).", false);
+                                btnRegister.setDisable(false);
+                            });
+                            return;
+                        }
                     }
-                }
 
-                // Guardar el usuario en Firestore
-                userDAO.saveUser(newUser);
-
-                // Asignar doctor automáticamente si es paciente
-                if ("patient".equals(mappedRole)) {
-                    List<User> doctors = patientDAO.getAllDoctors();
+                    // Asignar doctor aleatorio si existe alguno
+                    List<Doctor> doctors = doctorDAO.getAllDoctors();
                     if (!doctors.isEmpty()) {
-                        User randomDoctor = doctors.get((int) (Math.random() * doctors.size()));
-                        patientDAO.assignDoctorToPatient(newUser.getUid(), randomDoctor.getUid());
-                        System.out.println("Paciente registrado y asignado al doctor: " + randomDoctor.getFirstName() + " " + randomDoctor.getLastName());
-                    } else {
-                        System.out.println("Paciente registrado pero no hay doctores disponibles para asignar");
+                        Doctor randomDoctor = doctors.get((int) (Math.random() * doctors.size()));
+                        patient.setPrimaryDoctorId(randomDoctor.getId());
                     }
+
+                    patientDAO.savePatient(patient);
+                } else if ("doctor".equals(roleName)) {
+                    // Asegurar una especialidad por defecto si no existe
+                    Specialty specialty = getOrCreateSpecialty("General");
+
+                    Doctor doctor = new Doctor();
+                    doctor.setUserProfileId(userProfile.getId());
+                    doctor.setSpecialtyId(specialty.getId());
+                    doctor.setLicenseNumber("PENDING");
+                    doctor.setFirstName(firstName);
+                    doctor.setLastName(lastName);
+                    doctorDAO.saveDoctor(doctor);
                 }
 
                 Platform.runLater(() -> {
@@ -151,8 +187,35 @@ public class RegisterController {
         }).start();
     }
 
+    // Obtiene un rol existente o crea uno nuevo si no existe
+    private Role getOrCreateRole(String roleName) throws Exception {
+        Role role = roleDAO.getRoleByName(roleName);
+        if (role != null) {
+            return role;
+        }
+
+        Role newRole = new Role();
+        newRole.setName(roleName);
+        newRole.setDescription("Rol generado automaticamente");
+        roleDAO.saveRole(newRole);
+        return newRole;
+    }
+
+    // Obtiene una especialidad existente o crea una nueva si no existe
+    private Specialty getOrCreateSpecialty(String specialtyName) throws Exception {
+        Specialty specialty = specialtyDAO.getSpecialtyByName(specialtyName);
+        if (specialty != null) {
+            return specialty;
+        }
+
+        Specialty newSpecialty = new Specialty();
+        newSpecialty.setName(specialtyName);
+        specialtyDAO.saveSpecialty(newSpecialty);
+        return newSpecialty;
+    }
+
     /*Navega a la pantalla de inicio de sesión
-     Se llama cuando el usuario hace clic en "Ir a Login" */
+      Se llama cuando el usuario hace clic en "Ir a Login" */
     @FXML
     protected void onGoToLogin(ActionEvent event) {
         goToLogin(event);
@@ -175,7 +238,7 @@ public class RegisterController {
     }
 
     /*Muestra un mensaje de estado en la interfaz.
-     Cambia el color según si es un éxito (verde) o un error (rojo)*/
+      Cambia el color según si es un éxito (verde) o un error (rojo)*/
     private void showStatus(String message, boolean isSuccess) {
         lblStatus.setText(message);
         lblStatus.setTextFill(isSuccess ? Color.web("#4caf50") : Color.web("#ff5252"));
