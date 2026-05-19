@@ -1,7 +1,6 @@
 package com.itc.healthtrack.controllers;
 
-import com.itc.healthtrack.dao.PatientDAO;
-import com.itc.healthtrack.dao.UserDAO;
+import com.itc.healthtrack.dao.GenericDAO;
 import com.itc.healthtrack.models.User;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
@@ -14,6 +13,7 @@ import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import org.kordamp.bootstrapfx.BootstrapFX;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /*Controlador que gestiona el registro de nuevos usuarios
@@ -34,8 +34,7 @@ public class RegisterController {
     @FXML private Button btnRegister;               // Botón de registro
 
     // Acdeso a datos
-    private final PatientDAO patientDAO = new PatientDAO();
-    private final UserDAO userDAO = new UserDAO();
+    private final GenericDAO<User> userDao = new GenericDAO<>(User.class, "users");
 
     // Inicializa los ComboBox con opciones de género y rol
     @FXML
@@ -115,20 +114,25 @@ public class RegisterController {
                     }
                 }
 
-                // Guardar el usuario en Firestore
-                userDAO.saveUser(newUser);
-
-                // Asignar doctor automáticamente si es paciente
+                // Selecciona un doctor si el nuevo usuario es paciente
                 if ("patient".equals(mappedRole)) {
-                    List<User> doctors = patientDAO.getAllDoctors();
+                    // Busca todos los doctores disponibles
+                    List<User> doctors = getDoctors();
                     if (!doctors.isEmpty()) {
+                        // Selecciona un doctor al azar para asignarlo al paciente
                         User randomDoctor = doctors.get((int) (Math.random() * doctors.size()));
-                        patientDAO.assignDoctorToPatient(newUser.getUid(), randomDoctor.getUid());
+                        newUser.setAssignedDoctorId(randomDoctor.getUid());
                         System.out.println("Paciente registrado y asignado al doctor: " + randomDoctor.getFirstName() + " " + randomDoctor.getLastName());
                     } else {
                         System.out.println("Paciente registrado pero no hay doctores disponibles para asignar");
                     }
                 }
+
+                // Genera un ID nuevo para el usuario y lo asigna al modelo
+                String newId = userDao.createDocumentId();
+                newUser.setUid(newId);
+                // Guarda el usuario completo en Firestore con el ID generado
+                userDao.save(newId, newUser);
 
                 Platform.runLater(() -> {
                     showStatus("¡Cuenta creada exitosamente! \nRedirigiendo al login...", true);
@@ -180,5 +184,21 @@ public class RegisterController {
         lblStatus.setText(message);
         lblStatus.setTextFill(isSuccess ? Color.web("#4caf50") : Color.web("#ff5252"));
         lblStatus.setVisible(true);
+    }
+
+    // Obtiene todos los usuarios con rol de doctor usando un filtro simple
+    private List<User> getDoctors() throws Exception {
+        // Lista final de doctores a devolver
+        List<User> result = new ArrayList<>();
+        // Consulta todos los usuarios que tengan rol de doctor
+        List<User> users = userDao.getByField("role", "doctor");
+        // Recorre la lista y agrega los doctores válidos
+        for (User user : users) {
+            if ("doctor".equals(user.getRole())) {
+                result.add(user);
+            }
+        }
+        // Retorna la lista de doctores encontrados
+        return result;
     }
 }
