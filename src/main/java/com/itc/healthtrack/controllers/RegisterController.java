@@ -13,7 +13,6 @@ import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import org.kordamp.bootstrapfx.BootstrapFX;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /*Controlador que gestiona el registro de nuevos usuarios
@@ -188,17 +187,9 @@ public class RegisterController {
 
     // Obtiene todos los usuarios con rol de doctor usando un filtro simple
     private List<User> getDoctors() throws Exception {
-        // Lista final de doctores a devolver
-        List<User> result = new ArrayList<>();
         // Consulta todos los usuarios que tengan rol de doctor
-        List<User> users = userDao.getByField("role", "doctor");
-        // Recorre la lista y agrega los doctores válidos
-        for (User user : users) {
-            if ("doctor".equals(user.getRole())) {
-                result.add(user);
-            }
-        }
+        List<User> doctors = userDao.getByField("role", "doctor");
         // Retorna la lista de doctores encontrados
-        return result;
+        return doctors;
     }
 }
