@@ -128,6 +128,9 @@ public class AdminController {
                         patients++;
                     }
                 }
+                // Copias finales para usarlas dentro del hilo de la interfaz
+                final int doctorCount = doctors;
+                final int patientCount = patients;
 
                 // Ejecuta en el hilo de la interfaz gráfica
                 Platform.runLater(() -> {
@@ -136,8 +139,8 @@ public class AdminController {
 
                     // Actualiza las etiquetas de estadísticas
                     lblTotalUsers.setText(String.valueOf(allUsers.size()));
-                    lblTotalDoctors.setText(String.valueOf(doctors));
-                    lblTotalPatients.setText(String.valueOf(patients));
+                    lblTotalDoctors.setText(String.valueOf(doctorCount));
+                    lblTotalPatients.setText(String.valueOf(patientCount));
 
                     applyFilter();  // Aplica el filtro actual
                     lblStatus.setText("Lista actualizada\n" + allUsers.size() + " usuario(s) encontrado(s)");
