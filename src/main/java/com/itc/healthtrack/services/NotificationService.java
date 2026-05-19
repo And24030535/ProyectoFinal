@@ -1,7 +1,5 @@
 package com.itc.healthtrack.services;
 
-import com.itc.healthtrack.models.User;
-
 import java.util.Properties;
 import javax.mail.*;
 import javax.mail.internet.*;
@@ -23,21 +21,19 @@ public class NotificationService {
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    // Método para notificar a un paciente. Se ejecuta en un hilo secundario para evitar congelar la interfaz.
-    public void notifyPatient(User patient, String message) {
+    // Metodo para notificar a un paciente con correo y nombre ya definidos
+    public void notifyPatient(String patientEmail, String patientName, String message) {
         new Thread(() -> {
             String subject = "HealthTrack - Alerta de Salud";
-            String recipientName = patient.getFirstName() + " " + patient.getLastName();
-            sendEmail(patient.getEmail(), subject, recipientName, message);
+            sendEmail(patientEmail, subject, patientName, message);
         }).start();
     }
 
-    // Método para notificar al médico encargado. También utiliza un hilo secundario independiente.
-    public void notifyDoctor(User doctor, String message) {
+    // Metodo para notificar al doctor con correo y nombre ya definidos
+    public void notifyDoctor(String doctorEmail, String doctorName, String message) {
         new Thread(() -> {
             String subject = "HealthTrack - Actualización de Paciente";
-            String recipientName = "Dr. " + doctor.getFirstName() + " " + doctor.getLastName();
-            sendEmail(doctor.getEmail(), subject, recipientName, message);
+            sendEmail(doctorEmail, subject, doctorName, message);
         }).start();
     }
 

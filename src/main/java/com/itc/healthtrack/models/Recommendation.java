@@ -2,39 +2,86 @@ package com.itc.healthtrack.models;
 
 import com.google.cloud.Timestamp;
 
-//Representa una recomendación o alerta médica enviada a un paciente
+// Representa una recomendacion clinica enviada a un paciente
 public class Recommendation {
-    private String id;
-    private String patientId;
-    private Timestamp generatedAt;
-    private String type;
-    private String title;
-    private String message;
-    private Boolean isRead;
+    private String id;          // Identificador unico del documento
+    private String patientId;   // ID del paciente relacionado
+    private Timestamp generatedAt; // Fecha y hora de generacion
+    private String type;        // Tipo de recomendacion
+    private String title;       // Titulo visible
+    private String message;     // Mensaje completo
+    private Boolean isRead;     // Indica si ya fue leida
 
     // Constructor vacío requerido por Firestore
     public Recommendation() {}
 
-    // Getters y Setters
+    // Devuelve el ID de la recomendacion
+    public String getId() {
+        return id;
+    }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
+    // Asigna el ID de la recomendacion
+    public void setId(String id) {
+        this.id = id;
+    }
 
-    public String getPatientId() { return patientId; }
-    public void setPatientId(String patientId) { this.patientId = patientId; }
+    // Devuelve el ID del paciente
+    public String getPatientId() {
+        return patientId;
+    }
 
-    public Timestamp getGeneratedAt() { return generatedAt; }
-    public void setGeneratedAt(Timestamp generatedAt) { this.generatedAt = generatedAt; }
+    // Asigna el ID del paciente
+    public void setPatientId(String patientId) {
+        this.patientId = patientId;
+    }
 
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
+    // Devuelve la fecha de generacion
+    public Timestamp getGeneratedAt() {
+        return generatedAt;
+    }
 
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
+    // Asigna la fecha de generacion
+    public void setGeneratedAt(Timestamp generatedAt) {
+        this.generatedAt = generatedAt;
+    }
 
-    public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
+    // Devuelve el tipo de recomendacion
+    public String getType() {
+        return type;
+    }
 
-    public Boolean getIsRead() { return isRead; }
-    public void setIsRead(Boolean isRead) { this.isRead = isRead; }
+    // Asigna el tipo de recomendacion
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    // Devuelve el titulo
+    public String getTitle() {
+        return title;
+    }
+
+    // Asigna el titulo
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    // Devuelve el mensaje
+    public String getMessage() {
+        return message;
+    }
+
+    // Asigna el mensaje
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    // Devuelve si ya fue leida
+    public Boolean getIsRead() {
+        return isRead;
+    }
+
+    // Asigna si ya fue leida
+    public void setIsRead(Boolean isRead) {
+        this.isRead = isRead;
+    }
 }

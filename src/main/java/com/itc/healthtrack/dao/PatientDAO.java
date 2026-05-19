@@ -3,128 +3,125 @@ package com.itc.healthtrack.dao;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.*;
 import com.itc.healthtrack.config.FirebaseConnection;
-import com.itc.healthtrack.models.User;
+import com.itc.healthtrack.models.Patient;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-/*Gestiona las operaciones CRUD exclusivas para los pacientes en la clinica.
- Los pacientes se almacenan en la coleccion 'users' pero con el rol 'patient'*/
+// Gestiona las operaciones CRUD de la coleccion patients
 public class PatientDAO {
 
+    // Instancia de Firestore obtenida desde la configuracion central
     private final Firestore db;
 
+    // Constructor que inicializa la conexion a Firestore
     public PatientDAO() {
         this.db = FirebaseConnection.getInstance().getFirestore();
     }
 
-    //Obtiene la lista de pacientes asignados a un medico en especifico
-    public List<User> getPatientsByDoctor(String doctorId) throws ExecutionException, InterruptedException {
-        List<User> patientsList = new ArrayList<>();
+    // Guarda un nuevo paciente en Firestore
+    public void savePatient(Patient patient) throws ExecutionException, InterruptedException {
+        DocumentReference docRef = db.collection("patients").document();
+        patient.setId(docRef.getId());
 
-        //Buscar usuarios que sean pacientes y esten asignados a este medico
-        Query query = db.collection("users")
-                .whereEqualTo("role", "patient")
-                .whereEqualTo("assignedDoctorId", doctorId);
-
-        ApiFuture<QuerySnapshot> querySnapshot = query.get();
-
-        for (DocumentSnapshot document : querySnapshot.get().getDocuments()) {
-            User patient = document.toObject(User.class);
-            patientsList.add(patient);
-        }
-
-        return patientsList;
-    }
-
-    //Actualiza la informacion de un paciente existente
-    public void updatePatient(User patient) throws ExecutionException, InterruptedException {
-        DocumentReference docRef = db.collection("users").document(patient.getUid());
         ApiFuture<WriteResult> result = docRef.set(patient);
         result.get();
     }
 
-    //Elimina el registro de un paciente de la base de datos
+    // Obtiene un paciente por su ID
+    public Patient getPatientById(String patientId) throws ExecutionException, InterruptedException {
+        DocumentReference docRef = db.collection("patients").document(patientId);
+        DocumentSnapshot snapshot = docRef.get().get();
+        if (snapshot.exists()) {
+            Patient patient = snapshot.toObject(Patient.class);
+            if (patient != null) {
+                patient.setId(snapshot.getId());
+            }
+            return patient;
+        }
+        return null;
+    }
+
+    // Obtiene un paciente usando el ID del perfil de usuario
+    public Patient getPatientByUserProfileId(String userProfileId) throws ExecutionException, InterruptedException {
+        Query query = db.collection("patients").whereEqualTo("userProfileId", userProfileId);
+        ApiFuture<QuerySnapshot> result = query.get();
+
+        if (!result.get().getDocuments().isEmpty()) {
+            DocumentSnapshot snapshot = result.get().getDocuments().get(0);
+            Patient patient = snapshot.toObject(Patient.class);
+            if (patient != null) {
+                patient.setId(snapshot.getId());
+            }
+            return patient;
+        }
+        return null;
+    }
+
+    // Obtiene todos los pacientes registrados
+    public List<Patient> getAllPatients() throws ExecutionException, InterruptedException {
+        List<Patient> patients = new ArrayList<>();
+        ApiFuture<QuerySnapshot> result = db.collection("patients").get();
+
+        for (DocumentSnapshot snapshot : result.get().getDocuments()) {
+            Patient patient = snapshot.toObject(Patient.class);
+            if (patient != null) {
+                patient.setId(snapshot.getId());
+                patients.add(patient);
+            }
+        }
+        return patients;
+    }
+
+    // Obtiene pacientes asignados a un doctor especifico
+    public List<Patient> getPatientsByDoctorId(String doctorId) throws ExecutionException, InterruptedException {
+        List<Patient> patients = new ArrayList<>();
+        Query query = db.collection("patients").whereEqualTo("primaryDoctorId", doctorId);
+        ApiFuture<QuerySnapshot> result = query.get();
+
+        for (DocumentSnapshot snapshot : result.get().getDocuments()) {
+            Patient patient = snapshot.toObject(Patient.class);
+            if (patient != null) {
+                patient.setId(snapshot.getId());
+                patients.add(patient);
+            }
+        }
+        return patients;
+    }
+
+    // Actualiza un paciente existente
+    public void updatePatient(Patient patient) throws ExecutionException, InterruptedException {
+        DocumentReference docRef = db.collection("patients").document(patient.getId());
+        ApiFuture<WriteResult> result = docRef.set(patient);
+        result.get();
+    }
+
+    // Elimina un paciente por su ID
     public void deletePatient(String patientId) throws ExecutionException, InterruptedException {
-        DocumentReference docRef = db.collection("users").document(patientId);
+        DocumentReference docRef = db.collection("patients").document(patientId);
         ApiFuture<WriteResult> result = docRef.delete();
         result.get();
     }
 
-    //Obtener todos los pacientes
-    public List<User> getAllPatients() throws ExecutionException, InterruptedException {
-        List<User> patientsList = new ArrayList<>();
-        Query query = db.collection("users").whereEqualTo("role", "patient");
-        ApiFuture<QuerySnapshot> querySnapshot = query.get();
-        for (DocumentSnapshot document : querySnapshot.get().getDocuments()) {
-            User patient = document.toObject(User.class);
-            if (patient != null && (patient.getUid() == null || patient.getUid().isEmpty())) {
-                patient.setUid(document.getId());
-            }
-            patientsList.add(patient);
-        }
-        return patientsList;
-    }
-
-    //Asigna un doctor a un paciente específico
+    // Asigna un doctor a un paciente especifico
     public void assignDoctorToPatient(String patientId, String doctorId) throws ExecutionException, InterruptedException {
-        DocumentReference docRef = db.collection("users").document(patientId);
-        ApiFuture<WriteResult> result = docRef.update("assignedDoctorId", doctorId);
+        DocumentReference docRef = db.collection("patients").document(patientId);
+        ApiFuture<WriteResult> result = docRef.update("primaryDoctorId", doctorId);
         result.get();
     }
 
-    //Obtiene una lista de pacientes que no tienen doctor asignado
-    public List<User> getUnassignedPatients() throws ExecutionException, InterruptedException {
-        List<User> unassignedPatients = new ArrayList<>();
-        Query query = db.collection("users")
-                .whereEqualTo("role", "patient")
-                .whereEqualTo("assignedDoctorId", null);
-
-        ApiFuture<QuerySnapshot> querySnapshot = query.get();
-        for (DocumentSnapshot document : querySnapshot.get().getDocuments()) {
-            User patient = document.toObject(User.class);
-            if (patient != null && (patient.getUid() == null || patient.getUid().isEmpty())) {
-                patient.setUid(document.getId());
-            }
-            unassignedPatients.add(patient);
-        }
-        return unassignedPatients;
-    }
-
-    //Reasigna todos los pacientes de un doctor a otro doctor, sii newDoctorId es null, desasigna los pacientes (los deja sin doctor)*/
+    // Reasigna pacientes de un doctor a otro
     public void reassignPatients(String oldDoctorId, String newDoctorId) throws ExecutionException, InterruptedException {
-        List<User> patientsToReassign = getPatientsByDoctor(oldDoctorId);
+        List<Patient> patientsToReassign = getPatientsByDoctorId(oldDoctorId);
 
-        for (User patient : patientsToReassign) {
-            DocumentReference docRef = db.collection("users").document(patient.getUid());
+        for (Patient patient : patientsToReassign) {
+            DocumentReference docRef = db.collection("patients").document(patient.getId());
             if (newDoctorId != null) {
-                docRef.update("assignedDoctorId", newDoctorId).get();
+                docRef.update("primaryDoctorId", newDoctorId).get();
             } else {
-                // Si no hay nuevo doctor, se elimina la asignación
-                docRef.update("assignedDoctorId", FieldValue.delete()).get();
+                docRef.update("primaryDoctorId", null).get();
             }
         }
-    }
-
-    //Obtiene todos los doctores disponibles del sistema
-    public List<User> getAllDoctors() throws ExecutionException, InterruptedException {
-        List<User> doctorsList = new ArrayList<>();
-        Query query = db.collection("users").whereEqualTo("role", "doctor");
-        ApiFuture<QuerySnapshot> querySnapshot = query.get();
-
-        for (DocumentSnapshot document : querySnapshot.get().getDocuments()) {
-            User doctor = document.toObject(User.class);
-            if (doctor != null && (doctor.getUid() == null || doctor.getUid().isEmpty())) {
-                doctor.setUid(document.getId());
-            }
-            doctorsList.add(doctor);
-        }
-        return doctorsList;
-    }
-
-    //Verifica si existen doctores disponibles en el sistema
-    public boolean hasDoctorsAvailable() throws ExecutionException, InterruptedException {
-        return !getAllDoctors().isEmpty();
     }
 }

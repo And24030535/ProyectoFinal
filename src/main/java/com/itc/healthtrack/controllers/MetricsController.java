@@ -1,10 +1,14 @@
 package com.itc.healthtrack.controllers;
 
 import com.google.cloud.Timestamp;
-import com.itc.healthtrack.dao.MetricDAO;
+import com.itc.healthtrack.dao.HealthMetricDAO;
 import com.itc.healthtrack.dao.PatientDAO;
-import com.itc.healthtrack.models.Metric;
-import com.itc.healthtrack.models.User;
+import com.itc.healthtrack.dao.UserProfileDAO;
+import com.itc.healthtrack.models.Doctor;
+import com.itc.healthtrack.models.HealthMetric;
+import com.itc.healthtrack.models.Patient;
+import com.itc.healthtrack.models.Role;
+import com.itc.healthtrack.models.UserProfile;
 import com.itc.healthtrack.services.NotificationService;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
@@ -14,41 +18,61 @@ import javafx.fxml.FXML;
 import javafx.scene.chart.BarChart;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.XYChart;
-import javafx.scene.control.*;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.paint.Color;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MetricsController {
 
     // Componentes de la interfaz de usuario
-    @FXML private ComboBox<User> comboPatients;
-    @FXML private TextField txtSystolic, txtDiastolic, txtHeartRate, txtGlucose, txtWeight;
-    @FXML private Button btnSave;
+    @FXML private ComboBox<Patient> comboPatients;
+    @FXML private TextField txtSystolic;
+    @FXML private TextField txtDiastolic;
+    @FXML private TextField txtHeartRate;
+    @FXML private TextField txtGlucose;
+    @FXML private TextField txtWeight;
+    @FXML private javafx.scene.control.Button btnSave;
     @FXML private Label lblStatus;
 
     // Filtros y promedios
     @FXML private ComboBox<String> comboTimeFilter;
-    @FXML private Label lblAvgBP, lblAvgGlucose, lblAvgWeight;
+    @FXML private Label lblAvgBP;
+    @FXML private Label lblAvgGlucose;
+    @FXML private Label lblAvgWeight;
 
     // Tabla y gráficos
-    @FXML private TableView<Metric> tableMetrics;                 // Tabla de historial de métricas
-    @FXML private TableColumn<Metric, String> colDate, colSysDia;  // Columnas: Fecha y Presión (Sis/Dia)
-    @FXML private TableColumn<Metric, String> colHeartRate, colGlucose, colWeight;
-    @FXML private LineChart<String, Number> evolutionChart;       // Gráfico de línea: Evolución de presión
-    @FXML private BarChart<String, Number> averagesChart;         // Gráfico de barras: Promedios
+    @FXML private TableView<HealthMetric> tableMetrics;
+    @FXML private TableColumn<HealthMetric, String> colDate;
+    @FXML private TableColumn<HealthMetric, String> colSysDia;
+    @FXML private TableColumn<HealthMetric, String> colHeartRate;
+    @FXML private TableColumn<HealthMetric, String> colGlucose;
+    @FXML private TableColumn<HealthMetric, String> colWeight;
+    @FXML private LineChart<String, Number> evolutionChart;
+    @FXML private BarChart<String, Number> averagesChart;
 
     // Acceso a la base de datos y variables de estado
     private final PatientDAO patientDAO = new PatientDAO();
-    private final MetricDAO metricDAO = new MetricDAO();
+    private final HealthMetricDAO healthMetricDAO = new HealthMetricDAO();
+    private final UserProfileDAO userProfileDAO = new UserProfileDAO();
     private final NotificationService notificationService = new NotificationService();
-    private final ObservableList<Metric> metricsObservableList = FXCollections.observableArrayList();
+    private final ObservableList<HealthMetric> metricsObservableList = FXCollections.observableArrayList();
 
     // Estado del controlador
-    private User loggedInDoctor;                                   // Usuario actualmente logeado
-    private Metric selectedMetric = null;                          // Métrica seleccionada en la tabla
-    private List<Metric> currentPatientHistory = new ArrayList<>();  // Respaldo del historial completo
+    private UserProfile loggedInProfile;
+    private Role loggedInRole;
+    private Doctor loggedInDoctor;
+    private Patient loggedInPatient;
+    private HealthMetric selectedMetric = null;
+    private List<HealthMetric> currentPatientHistory = new ArrayList<>();
+    private Map<String, UserProfile> userProfileByPatientId = new HashMap<>();
 
     /*
      Inicializa el controlador con los datos del usuario logeado
@@ -57,44 +81,39 @@ public class MetricsController {
      - Médicos ven sus pacientes asignados
      - Admins ven todos los pacientes
      */
-    public void initData(User user) {
-        this.loggedInDoctor = user;
+    public void initData(UserProfile profile, Role role, Doctor doctor, Patient patient) {
+        this.loggedInProfile = profile;
+        this.loggedInRole = role;
+        this.loggedInDoctor = doctor;
+        this.loggedInPatient = patient;
+
         setupTable();
         setupFilters();
 
-        if ("patient".equals(user.getRole())) {
-            // Patients can only view and log their own metrics
-            comboPatients.getItems().add(user);
+        if (role != null && "patient".equals(role.getName()) && patient != null) {
+            comboPatients.getItems().add(patient);
             comboPatients.getSelectionModel().selectFirst();
             comboPatients.setDisable(true);
-            loadMetricsForPatient(user.getUid());
+            loadMetricsForPatient(patient.getId());
         } else {
-            // Doctors and admins see a dropdown of assigned patients
             loadPatientsIntoCombo();
             comboPatients.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal != null) {
                     onClearForm();
-                    loadMetricsForPatient(newVal.getUid());
+                    loadMetricsForPatient(newVal.getId());
                 }
             });
         }
     }
 
     private void setupFilters() {
-        // Configurar opciones de filtro de período
         comboTimeFilter.setItems(FXCollections.observableArrayList("Historial Completos", "Últimos 7 Días", "Últimos 30 Días"));
         comboTimeFilter.getSelectionModel().selectFirst();
-
-        // Escuchador: cuando cambia el filtro, recargar datos
-        comboTimeFilter.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            applyTimeFilter();
-        });
+        comboTimeFilter.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> applyTimeFilter());
     }
 
     // Configura las columnas de la tabla y establece escuchadores de evento
-    // También inicializa los gráficos de línea y barras
     private void setupTable() {
-        // Configurar el formato de las columnas de la tabla
         colDate.setCellValueFactory(cellData -> {
             Timestamp ts = cellData.getValue().getTimestamp();
             return new SimpleStringProperty(ts != null ? ts.toDate().toString().substring(0, 19) : "N/A");
@@ -115,7 +134,6 @@ public class MetricsController {
 
         tableMetrics.setItems(metricsObservableList);
 
-        // Cuando se selecciona una fila, llenar el formulario y cambiar botón a "Actualizar"
         tableMetrics.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
             if (newSelection != null) {
                 selectedMetric = newSelection;
@@ -124,7 +142,6 @@ public class MetricsController {
                 txtHeartRate.setText(newSelection.getHeartRate() != null ? String.valueOf(newSelection.getHeartRate()) : "");
                 txtGlucose.setText(newSelection.getGlucoseLevel() != null ? String.valueOf(newSelection.getGlucoseLevel()) : "");
                 txtWeight.setText(newSelection.getWeight() != null ? String.valueOf(newSelection.getWeight()) : "");
-
                 btnSave.setText("Actualizar");
             }
         });
@@ -135,15 +152,27 @@ public class MetricsController {
     private void loadPatientsIntoCombo() {
         new Thread(() -> {
             try {
-                List<User> patients;
-                if ("admin".equals(loggedInDoctor.getRole())) {
-                    // El admin ve TODOS los pacientes del sistema
+                List<Patient> patients;
+                if (loggedInRole != null && "admin".equals(loggedInRole.getName())) {
                     patients = patientDAO.getAllPatients();
+                } else if (loggedInDoctor != null) {
+                    patients = patientDAO.getPatientsByDoctorId(loggedInDoctor.getId());
                 } else {
-                    // El médico solo ve sus pacientes asignados
-                    patients = patientDAO.getPatientsByDoctor(loggedInDoctor.getUid());
+                    patients = new ArrayList<>();
                 }
-                Platform.runLater(() -> comboPatients.setItems(FXCollections.observableArrayList(patients)));
+
+                Map<String, UserProfile> profileMap = new HashMap<>();
+                for (Patient patient : patients) {
+                    UserProfile profile = userProfileDAO.getUserProfileById(patient.getUserProfileId());
+                    if (profile != null) {
+                        profileMap.put(patient.getId(), profile);
+                    }
+                }
+
+                Platform.runLater(() -> {
+                    userProfileByPatientId = profileMap;
+                    comboPatients.setItems(FXCollections.observableArrayList(patients));
+                });
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -155,10 +184,10 @@ public class MetricsController {
     private void loadMetricsForPatient(String patientId) {
         new Thread(() -> {
             try {
-                List<Metric> history = metricDAO.getMetricsByPatient(patientId);
+                List<HealthMetric> history = healthMetricDAO.getHealthMetricsByPatient(patientId);
                 Platform.runLater(() -> {
-                    currentPatientHistory = history; // Guardar respaldo
-                    applyTimeFilter(); // Aplicar el filtro que a su vez llena la tabla y gráficas
+                    currentPatientHistory = history;
+                    applyTimeFilter();
                     lblStatus.setText("Historial cargado con éxito");
                     lblStatus.setTextFill(Color.web("#4caf50"));
                 });
@@ -171,7 +200,7 @@ public class MetricsController {
         }).start();
     }
 
-    /*Aplica el filtro de período al historial complet o de métricas
+    /*Aplica el filtro de período al historial completo de métricas
      Actualiza la tabla, gráficos y calcula promedios según el filtro seleccionado*/
     private void applyTimeFilter() {
         if (currentPatientHistory.isEmpty()) {
@@ -182,24 +211,24 @@ public class MetricsController {
             return;
         }
 
-        // Obtener el filtro seleccionado y calcular el límite de tiempo
         String filter = comboTimeFilter.getValue();
         long nowSeconds = System.currentTimeMillis() / 1000;
         long limitSeconds = 0;
 
-        if ("Últimos 7 Días".equals(filter)) limitSeconds = 7 * 24 * 3600;
-        else if ("Últimos 30 Días".equals(filter)) limitSeconds = 30 * 24 * 3600;
+        if ("Últimos 7 Días".equals(filter)) {
+            limitSeconds = 7L * 24 * 3600;
+        } else if ("Últimos 30 Días".equals(filter)) {
+            limitSeconds = 30L * 24 * 3600;
+        }
 
-        // Filtrar las métricas según el período seleccionado
-        List<Metric> filteredList = new ArrayList<>();
-        for (Metric m : currentPatientHistory) {
-            long metricTime = m.getTimestamp().getSeconds();
+        List<HealthMetric> filteredList = new ArrayList<>();
+        for (HealthMetric metric : currentPatientHistory) {
+            long metricTime = metric.getTimestamp().getSeconds();
             if (limitSeconds == 0 || (nowSeconds - metricTime) <= limitSeconds) {
-                filteredList.add(m);
+                filteredList.add(metric);
             }
         }
 
-        // Actualizar tabla, gráficos y promedios
         metricsObservableList.clear();
         metricsObservableList.addAll(filteredList);
         updateChart(filteredList);
@@ -207,8 +236,8 @@ public class MetricsController {
         calculateAverages(filteredList);
     }
 
-    /*Calcula y muestra los promedios de presión arterial, glucosa y peso para el período de datos actualmente visible  */
-    private void calculateAverages(List<Metric> data) {
+    /*Calcula y muestra los promedios de presión arterial, glucosa y peso*/
+    private void calculateAverages(List<HealthMetric> data) {
         if (data.isEmpty()) {
             lblAvgBP.setText("PA: --/-- mmHg");
             lblAvgGlucose.setText("Glucosa: -- mg/dL");
@@ -216,30 +245,37 @@ public class MetricsController {
             return;
         }
 
-        // Sumar todos los valores
-        int sysTotal = 0, diaTotal = 0, bpCount = 0;
-        double glTotal = 0, weightTotal = 0;
-        int glCount = 0, weightCount = 0;
+        int sysTotal = 0;
+        int diaTotal = 0;
+        int bpCount = 0;
+        double glTotal = 0;
+        double weightTotal = 0;
+        int glCount = 0;
+        int weightCount = 0;
 
-        for (Metric m : data) {
-            if (m.getSystolic() != null && m.getDiastolic() != null) {
-                sysTotal += m.getSystolic();
-                diaTotal += m.getDiastolic();
+        for (HealthMetric metric : data) {
+            if (metric.getSystolic() != null && metric.getDiastolic() != null) {
+                sysTotal += metric.getSystolic();
+                diaTotal += metric.getDiastolic();
                 bpCount++;
             }
-            if (m.getGlucoseLevel() != null) { glTotal += m.getGlucoseLevel(); glCount++; }
-            if (m.getWeight() != null) { weightTotal += m.getWeight(); weightCount++; }
+            if (metric.getGlucoseLevel() != null) {
+                glTotal += metric.getGlucoseLevel();
+                glCount++;
+            }
+            if (metric.getWeight() != null) {
+                weightTotal += metric.getWeight();
+                weightCount++;
+            }
         }
 
-        // Mostrar promedios calculados
-        lblAvgBP.setText(bpCount > 0 ? "PA: " + (sysTotal/bpCount) + "/" + (diaTotal/bpCount) + " mmHg" : "PA: --/-- mmHg");
-        lblAvgGlucose.setText(glCount > 0 ? String.format("Glucosa: %.1f mg/dL", (glTotal/glCount)) : "Glucosa: -- mg/dL");
-        lblAvgWeight.setText(weightCount > 0 ? String.format("Peso: %.1f kg", (weightTotal/weightCount)) : "Peso: -- kg");
+        lblAvgBP.setText(bpCount > 0 ? "PA: " + (sysTotal / bpCount) + "/" + (diaTotal / bpCount) + " mmHg" : "PA: --/-- mmHg");
+        lblAvgGlucose.setText(glCount > 0 ? String.format("Glucosa: %.1f mg/dL", (glTotal / glCount)) : "Glucosa: -- mg/dL");
+        lblAvgWeight.setText(weightCount > 0 ? String.format("Peso: %.1f kg", (weightTotal / weightCount)) : "Peso: -- kg");
     }
 
-    /*Actualiza el gráfico de línea con la evolución de presión arterial.
-     Muestra sistólica y diastólica en series separadas  */
-    private void updateChart(List<Metric> history) {
+    /*Actualiza el gráfico de línea con la evolución de presión arterial.*/
+    private void updateChart(List<HealthMetric> history) {
         evolutionChart.getData().clear();
 
         XYChart.Series<String, Number> systolicSeries = new XYChart.Series<>();
@@ -248,58 +284,60 @@ public class MetricsController {
         XYChart.Series<String, Number> diastolicSeries = new XYChart.Series<>();
         diastolicSeries.setName("Diastólica");
 
-        // Iteración inversa para mostrar los datos más antiguos a la izquierda
         for (int i = history.size() - 1; i >= 0; i--) {
-            Metric m = history.get(i);
-            if (m.getSystolic() != null && m.getDiastolic() != null) {
-                String label = m.getTimestamp().toDate().toString().substring(4, 10);
-                systolicSeries.getData().add(new XYChart.Data<>(label, m.getSystolic()));
-                diastolicSeries.getData().add(new XYChart.Data<>(label, m.getDiastolic()));
+            HealthMetric metric = history.get(i);
+            if (metric.getSystolic() != null && metric.getDiastolic() != null) {
+                String label = metric.getTimestamp().toDate().toString().substring(4, 10);
+                systolicSeries.getData().add(new XYChart.Data<>(label, metric.getSystolic()));
+                diastolicSeries.getData().add(new XYChart.Data<>(label, metric.getDiastolic()));
             }
         }
 
         evolutionChart.getData().addAll(systolicSeries, diastolicSeries);
     }
 
-    /*Actualiza el gráfico de barras con los promedios de todas las métricas.
-     Muestra sistólica, diastólica, frecuencia cardíaca, glucosa y peso */
-    private void updateBarChart(List<Metric> history) {
+    /*Actualiza el gráfico de barras con los promedios de todas las métricas.*/
+    private void updateBarChart(List<HealthMetric> history) {
         averagesChart.getData().clear();
-
-        if (history.isEmpty()) return;
+        if (history.isEmpty()) {
+            return;
+        }
 
         XYChart.Series<String, Number> avgSeries = new XYChart.Series<>();
         avgSeries.setName("Promedio del período");
 
-        // Calcular promedios de todas las métricas
-        int sysTotal = 0, diaTotal = 0, hrTotal = 0;
-        double glTotal = 0, weightTotal = 0;
-        int sysCount = 0, diaCount = 0, hrCount = 0, glCount = 0, weightCount = 0;
+        int sysTotal = 0;
+        int diaTotal = 0;
+        int hrTotal = 0;
+        double glTotal = 0;
+        double weightTotal = 0;
+        int sysCount = 0;
+        int diaCount = 0;
+        int hrCount = 0;
+        int glCount = 0;
+        int weightCount = 0;
 
-        for (Metric m : history) {
-            if (m.getSystolic() != null)     { sysTotal    += m.getSystolic();    sysCount++;    }
-            if (m.getDiastolic() != null)    { diaTotal    += m.getDiastolic();   diaCount++;    }
-            if (m.getHeartRate() != null)    { hrTotal     += m.getHeartRate();   hrCount++;     }
-            if (m.getGlucoseLevel() != null) { glTotal     += m.getGlucoseLevel(); glCount++;   }
-            if (m.getWeight() != null)       { weightTotal += m.getWeight();      weightCount++; }
+        for (HealthMetric metric : history) {
+            if (metric.getSystolic() != null) { sysTotal += metric.getSystolic(); sysCount++; }
+            if (metric.getDiastolic() != null) { diaTotal += metric.getDiastolic(); diaCount++; }
+            if (metric.getHeartRate() != null) { hrTotal += metric.getHeartRate(); hrCount++; }
+            if (metric.getGlucoseLevel() != null) { glTotal += metric.getGlucoseLevel(); glCount++; }
+            if (metric.getWeight() != null) { weightTotal += metric.getWeight(); weightCount++; }
         }
 
-        // Agregar al gráfico los promedios calculados
-        if (sysCount > 0)    avgSeries.getData().add(new XYChart.Data<>("Sistólica",  sysTotal    / (double) sysCount));
-        if (diaCount > 0)    avgSeries.getData().add(new XYChart.Data<>("Diastólica", diaTotal    / (double) diaCount));
-        if (hrCount > 0)     avgSeries.getData().add(new XYChart.Data<>("F. Cardíaca", hrTotal    / (double) hrCount));
-        if (glCount > 0)     avgSeries.getData().add(new XYChart.Data<>("Glucosa",    glTotal     / (double) glCount));
-        if (weightCount > 0) avgSeries.getData().add(new XYChart.Data<>("Peso (kg)",  weightTotal / (double) weightCount));
+        if (sysCount > 0) { avgSeries.getData().add(new XYChart.Data<>("Sistólica", sysTotal / (double) sysCount)); }
+        if (diaCount > 0) { avgSeries.getData().add(new XYChart.Data<>("Diastólica", diaTotal / (double) diaCount)); }
+        if (hrCount > 0) { avgSeries.getData().add(new XYChart.Data<>("F. Cardíaca", hrTotal / (double) hrCount)); }
+        if (glCount > 0) { avgSeries.getData().add(new XYChart.Data<>("Glucosa", glTotal / (double) glCount)); }
+        if (weightCount > 0) { avgSeries.getData().add(new XYChart.Data<>("Peso (kg)", weightTotal / (double) weightCount)); }
 
         averagesChart.getData().add(avgSeries);
     }
 
-    /*Guarda una nueva métrica o actualiza una existente
-      Calcula automáticamente el IMC si están disponibles peso y altura
-    Evalúa valores clínicos y muestra alertas si se detectan anomalías*/
+    /*Guarda una nueva métrica o actualiza una existente*/
     @FXML
     protected void onSaveMetric() {
-        User selectedPatient = comboPatients.getValue();
+        Patient selectedPatient = comboPatients.getValue();
         if (selectedPatient == null) {
             lblStatus.setText("Error: Selecciona un paciente primero");
             lblStatus.setTextFill(Color.web("#ff5252"));
@@ -308,10 +346,10 @@ public class MetricsController {
 
         try {
             boolean isNewRecord = (selectedMetric == null);
-            Metric metricToProcess = isNewRecord ? new Metric() : selectedMetric;
+            HealthMetric metricToProcess = isNewRecord ? new HealthMetric() : selectedMetric;
 
             if (isNewRecord) {
-                metricToProcess.setPatientId(selectedPatient.getUid());
+                metricToProcess.setPatientId(selectedPatient.getId());
                 metricToProcess.setTimestamp(Timestamp.now());
             }
 
@@ -321,8 +359,6 @@ public class MetricsController {
             metricToProcess.setGlucoseLevel(txtGlucose.getText().isEmpty() ? null : Double.parseDouble(txtGlucose.getText()));
             metricToProcess.setWeight(txtWeight.getText().isEmpty() ? null : Double.parseDouble(txtWeight.getText()));
 
-            // Verificamos que el peso y la altura existan
-            // y que la altura sea mayor a 0 para evitar un error matemático
             if (metricToProcess.getWeight() != null && selectedPatient.getHeight() != null && selectedPatient.getHeight() > 0) {
                 double heightM = selectedPatient.getHeight();
                 double bmi = metricToProcess.getWeight() / (heightM * heightM);
@@ -332,23 +368,22 @@ public class MetricsController {
             lblStatus.setText(isNewRecord ? "Guardando..." : "Actualizando...");
             lblStatus.setTextFill(Color.web("#ffffff"));
 
-            // Llamamos a una función que revisa si las métricas del paciente tienen valores peligrosos
-            String alert = evaluateClinicalThresholds(metricToProcess, selectedPatient);
+            String alert = evaluateClinicalThresholds(metricToProcess);
             if (alert != null) {
-                showClinicalAlert(alert);
+                showClinicalAlert(alert, selectedPatient);
             }
 
             new Thread(() -> {
                 try {
                     if (isNewRecord) {
-                        metricDAO.saveMetric(metricToProcess);
+                        healthMetricDAO.saveHealthMetric(metricToProcess);
                     } else {
-                        metricDAO.updateMetric(metricToProcess);
+                        healthMetricDAO.updateHealthMetric(metricToProcess);
                     }
 
                     Platform.runLater(() -> {
                         onClearForm();
-                        loadMetricsForPatient(selectedPatient.getUid());
+                        loadMetricsForPatient(selectedPatient.getId());
                         lblStatus.setText(isNewRecord ? "Métrica guardada" : "Métrica actualizada");
                         lblStatus.setTextFill(Color.web("#4caf50"));
                     });
@@ -367,12 +402,10 @@ public class MetricsController {
         }
     }
 
-    /*Evalúa datos y retorna un mensaje de alerta si se detectan valores críticos
-     Verifica presión arterial, glucosa, frecuencia cardíaca e índice de masa corporal    */
-    private String evaluateClinicalThresholds(Metric metric, User patient) {
+    /*Evalúa datos y retorna un mensaje de alerta si se detectan valores críticos*/
+    private String evaluateClinicalThresholds(HealthMetric metric) {
         StringBuilder alert = new StringBuilder();
 
-        // Evaluar presión arterial
         if (metric.getSystolic() != null && metric.getDiastolic() != null) {
             int sys = metric.getSystolic();
             int dia = metric.getDiastolic();
@@ -383,7 +416,6 @@ public class MetricsController {
             }
         }
 
-        // Evaluar glucosa
         if (metric.getGlucoseLevel() != null) {
             double gluc = metric.getGlucoseLevel();
             if (gluc > 300) {
@@ -395,7 +427,6 @@ public class MetricsController {
             }
         }
 
-        // Evaluar frecuencia cardíaca
         if (metric.getHeartRate() != null) {
             int hr = metric.getHeartRate();
             if (hr > 120) {
@@ -405,7 +436,6 @@ public class MetricsController {
             }
         }
 
-        // Evaluar IMC
         if (metric.getBmi() != null) {
             double bmi = metric.getBmi();
             if (bmi >= 40) {
@@ -420,9 +450,9 @@ public class MetricsController {
 
     /* Muestra un diálogo de alerta clínica en la interfaz.
      También notifica al paciente y al médico si es aplicable. */
-    private void showClinicalAlert(String message) {
+    private void showClinicalAlert(String message, Patient patient) {
         Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
+            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
             alert.setTitle("Alerta Clínica — HealthTrack");
             alert.setHeaderText("Se detectaron valores fuera del rango clínico normal");
             alert.setContentText(message);
@@ -430,18 +460,21 @@ public class MetricsController {
             alert.getDialogPane().lookup(".content.label").setStyle("-fx-text-fill: #000000;");
             alert.showAndWait();
 
-            // Actualizar etiqueta de estado
             lblStatus.setText("Valores críticos detectados, revisa la alerta");
             lblStatus.setTextFill(Color.web("#ff9800"));
 
-            // Notificar al paciente y al médico
-            User patient = comboPatients.getValue();
-            if (patient != null) {
-                notificationService.notifyPatient(patient, "Valores clínicos críticos detectados en tu última medición, consulta a tu médico");
-                if (loggedInDoctor != null
-                        && ("doctor".equals(loggedInDoctor.getRole()) || "admin".equals(loggedInDoctor.getRole()))) {
-                    notificationService.notifyDoctor(loggedInDoctor, "ALERTA: El paciente " + patient.getFirstName() + " " + patient.getLastName() + " tiene valores críticos registrados");
-                }
+            // Notificar al paciente
+            String patientEmail = getPatientEmail(patient);
+            String patientName = patient.getFirstName() + " " + patient.getLastName();
+            notificationService.notifyPatient(patientEmail, patientName,
+                    "Valores clínicos críticos detectados en tu última medición, consulta a tu médico");
+
+            // Notificar al doctor si aplica
+            if (loggedInRole != null && ("doctor".equals(loggedInRole.getName()) || "admin".equals(loggedInRole.getName()))
+                    && loggedInDoctor != null && loggedInProfile != null) {
+                String doctorName = "Dr. " + loggedInDoctor.getFirstName() + " " + loggedInDoctor.getLastName();
+                notificationService.notifyDoctor(loggedInProfile.getEmail(), doctorName,
+                        "ALERTA: El paciente " + patientName + " tiene valores críticos registrados");
             }
         });
     }
@@ -458,14 +491,14 @@ public class MetricsController {
         lblStatus.setText("Eliminando...");
         lblStatus.setTextFill(Color.web("#ffffff"));
         String metricId = selectedMetric.getId();
-        String pId = selectedMetric.getPatientId();
+        String patientId = selectedMetric.getPatientId();
 
         new Thread(() -> {
             try {
-                metricDAO.deleteMetric(metricId);
+                healthMetricDAO.deleteHealthMetric(metricId);
                 Platform.runLater(() -> {
                     onClearForm();
-                    loadMetricsForPatient(pId);
+                    loadMetricsForPatient(patientId);
                     lblStatus.setText("Métrica eliminada.");
                     lblStatus.setTextFill(Color.web("#4caf50"));
                 });
@@ -486,7 +519,21 @@ public class MetricsController {
 
         selectedMetric = null;
         tableMetrics.getSelectionModel().clearSelection();
-
         btnSave.setText("Guardar");
+    }
+
+    // Obtiene el correo del paciente usando el mapa local
+    private String getPatientEmail(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+        UserProfile profile = userProfileByPatientId.get(patient.getId());
+        if (profile != null && profile.getEmail() != null) {
+            return profile.getEmail();
+        }
+        if (loggedInProfile != null && loggedInPatient != null && loggedInPatient.getId().equals(patient.getId())) {
+            return loggedInProfile.getEmail();
+        }
+        return "";
     }
 }

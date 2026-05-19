@@ -9,46 +9,71 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-/* Gestiona todas las operaciones de lectura y escritura de recomendaciones médicas
- (alertas, sugerencias, recordatorios) en Firestore*/
+// Gestiona las operaciones CRUD de la coleccion recommendations
 public class RecommendationDAO {
 
-    // Instancia de Firestore desde la configuración de Firebase
+    // Instancia de Firestore obtenida desde la configuracion central
     private final Firestore db;
 
-    //Constructor que inicializa la conexión a Firestore
+    // Constructor que inicializa la conexion a Firestore
     public RecommendationDAO() {
         this.db = FirebaseConnection.getInstance().getFirestore();
     }
 
-    //Guarda una nueva recomendación (alerta, sugerencia o recordatorio) en Firestore
+    // Guarda una nueva recomendacion
     public void saveRecommendation(Recommendation recommendation) throws ExecutionException, InterruptedException {
-        // Se crea una referencia a un nuevo documento con ID autogenerado
         DocumentReference docRef = db.collection("recommendations").document();
         recommendation.setId(docRef.getId());
 
-        // Se guarda el objeto completo en la base de datos
         ApiFuture<WriteResult> result = docRef.set(recommendation);
-        result.get(); // Espera a que la operación se complete
+        result.get();
     }
 
-    //Obtiene las recomendaciones de un paciente, de la mas reciente a la mas antigua
-    public List<Recommendation> getRecommendationsByPatient(String patientId) throws ExecutionException, InterruptedException {
-        List<Recommendation> recList = new ArrayList<>();
+    // Obtiene una recomendacion por su ID
+    public Recommendation getRecommendationById(String recommendationId) throws ExecutionException, InterruptedException {
+        DocumentReference docRef = db.collection("recommendations").document(recommendationId);
+        DocumentSnapshot snapshot = docRef.get().get();
+        if (snapshot.exists()) {
+            Recommendation recommendation = snapshot.toObject(Recommendation.class);
+            if (recommendation != null) {
+                recommendation.setId(snapshot.getId());
+            }
+            return recommendation;
+        }
+        return null;
+    }
 
-        // buscar donde patientId coincida y ordenar descendente
+    // Obtiene recomendaciones por ID de paciente, ordenadas por fecha
+    public List<Recommendation> getRecommendationsByPatient(String patientId) throws ExecutionException, InterruptedException {
+        List<Recommendation> recommendations = new ArrayList<>();
+
         Query query = db.collection("recommendations")
                 .whereEqualTo("patientId", patientId)
                 .orderBy("generatedAt", Query.Direction.DESCENDING);
 
-        ApiFuture<QuerySnapshot> querySnapshot = query.get();
+        ApiFuture<QuerySnapshot> result = query.get();
 
-        // Convierte cada documento de Firestore en un objeto Recommendation de Java
-        for (DocumentSnapshot document : querySnapshot.get().getDocuments()) {
-            Recommendation rec = document.toObject(Recommendation.class);
-            recList.add(rec);
+        for (DocumentSnapshot snapshot : result.get().getDocuments()) {
+            Recommendation recommendation = snapshot.toObject(Recommendation.class);
+            if (recommendation != null) {
+                recommendation.setId(snapshot.getId());
+                recommendations.add(recommendation);
+            }
         }
+        return recommendations;
+    }
 
-        return recList;
+    // Actualiza una recomendacion existente
+    public void updateRecommendation(Recommendation recommendation) throws ExecutionException, InterruptedException {
+        DocumentReference docRef = db.collection("recommendations").document(recommendation.getId());
+        ApiFuture<WriteResult> result = docRef.set(recommendation);
+        result.get();
+    }
+
+    // Elimina una recomendacion por ID
+    public void deleteRecommendation(String recommendationId) throws ExecutionException, InterruptedException {
+        DocumentReference docRef = db.collection("recommendations").document(recommendationId);
+        ApiFuture<WriteResult> result = docRef.delete();
+        result.get();
     }
 }
