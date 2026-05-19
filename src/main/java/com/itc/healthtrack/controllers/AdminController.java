@@ -151,12 +151,15 @@ public class AdminController {
                     }
                 }
 
+                int finalDoctorCount = doctorCount;
+                int finalPatientCount = patientCount;
+
                 Platform.runLater(() -> {
                     usersObservableList.clear();
                     usersObservableList.addAll(profiles);
                     lblTotalUsers.setText(String.valueOf(profiles.size()));
-                    lblTotalDoctors.setText(String.valueOf(doctorCount));
-                    lblTotalPatients.setText(String.valueOf(patientCount));
+                    lblTotalDoctors.setText(String.valueOf(finalDoctorCount));
+                    lblTotalPatients.setText(String.valueOf(finalPatientCount));
                     applyFilter();
                     lblStatus.setText("Lista actualizada\n" + profiles.size() + " usuario(s) encontrado(s)");
                 });
