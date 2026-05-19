@@ -171,8 +171,14 @@ public class LoginController {
 
             } catch (Exception e) {
                 e.printStackTrace();
+                boolean isConfigError = e instanceof IllegalStateException;
+                String errorMessage = e.getMessage();
                 Platform.runLater(() -> {
-                    showError("Error al conectar con la base de datos");
+                    if (isConfigError && errorMessage != null && !errorMessage.isBlank()) {
+                        showError(errorMessage);
+                    } else {
+                        showError("Error al conectar con la base de datos");
+                    }
                     loginButton.setDisable(false);
                 });
             }
@@ -184,7 +190,7 @@ public class LoginController {
         // La clave web se obtiene desde una variable de entorno para no guardarla en el codigo
         String apiKey = System.getenv("FIREBASE_WEB_API_KEY");
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("Falta la clave FIREBASE_WEB_API_KEY");
+            throw new IllegalStateException("Falta la variable de entorno FIREBASE_WEB_API_KEY");
         }
 
         // Se construye el cuerpo JSON requerido por Firebase Auth

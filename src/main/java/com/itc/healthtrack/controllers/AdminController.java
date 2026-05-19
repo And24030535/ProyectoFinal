@@ -423,7 +423,7 @@ public class AdminController {
         List<Doctor> doctors = doctorDAO.getAllDoctors();
         List<Doctor> availableDoctors = new ArrayList<>();
 
-        // Se crea una lista sin el doctor que sera eliminado
+        // Se crea una lista sin el doctor que será eliminado
         for (Doctor doctor : doctors) {
             if (!doctor.getId().equals(doctorId)) {
                 availableDoctors.add(doctor);
