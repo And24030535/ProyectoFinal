@@ -388,29 +388,29 @@ public class AdminController {
         }
 
         // ComboBox con los médicos que pueden recibir los pacientes
-        ComboBox<User> comboNuevoDoc = new ComboBox<>();
-        comboNuevoDoc.setMaxWidth(Double.MAX_VALUE);
-        comboNuevoDoc.setItems(FXCollections.observableArrayList(otherDoctors));
-        comboNuevoDoc.setCellFactory(lv -> new ListCell<User>() {
+        ComboBox<User> comboNewDoctor = new ComboBox<>();
+        comboNewDoctor.setMaxWidth(Double.MAX_VALUE);
+        comboNewDoctor.setItems(FXCollections.observableArrayList(otherDoctors));
+        comboNewDoctor.setCellFactory(lv -> new ListCell<User>() {
             @Override protected void updateItem(User u, boolean empty) {
                 super.updateItem(u, empty);
                 setText(empty || u == null ? null : "Dr. " + u.getFirstName() + " " + u.getLastName());
             }
         });
-        comboNuevoDoc.setButtonCell(new ListCell<User>() {
+        comboNewDoctor.setButtonCell(new ListCell<User>() {
             @Override protected void updateItem(User u, boolean empty) {
                 super.updateItem(u, empty);
                 setText(empty || u == null ? null : "Dr. " + u.getFirstName() + " " + u.getLastName());
             }
         });
-        comboNuevoDoc.getSelectionModel().selectFirst();
+        comboNewDoctor.getSelectionModel().selectFirst();
 
         Label lblInfo = new Label("El Dr. " + doctorName + " tiene "
                 + patients.size() + " paciente(s). Selecciona el médico que los recibirá:");
         lblInfo.setStyle("-fx-text-fill: #222222; -fx-font-weight: bold;");
         lblInfo.setWrapText(true);
 
-        VBox content = new VBox(10, lblInfo, comboNuevoDoc);
+        VBox content = new VBox(10, lblInfo, comboNewDoctor);
         content.setStyle("-fx-padding: 10;");
 
         Dialog<ButtonType> dialog = new Dialog<>();
@@ -423,8 +423,8 @@ public class AdminController {
         dialog.showAndWait().ifPresent(btn -> {
             if (btn != ButtonType.OK) return;
 
-            User nuevoMedico = comboNuevoDoc.getValue();
-            if (nuevoMedico == null) return;
+            User newDoctor = comboNewDoctor.getValue();
+            if (newDoctor == null) return;
 
             lblStatus.setText("Reasignando pacientes y eliminando médico...");
             lblStatus.setTextFill(Color.web("#ffffff"));
@@ -436,13 +436,13 @@ public class AdminController {
                     for (User p : patients) patientIds.add(p.getUid());
 
                     // Preparamos los campos a actualizar en cada paciente
-                    Map<String, Object> campos = new HashMap<>();
-                    campos.put("assignedDoctorId",   nuevoMedico.getUid());
-                    campos.put("assignedDoctorName",
-                            nuevoMedico.getFirstName() + " " + nuevoMedico.getLastName());
+                    Map<String, Object> fields = new HashMap<>();
+                    fields.put("assignedDoctorId",   newDoctor.getUid());
+                    fields.put("assignedDoctorName",
+                            newDoctor.getFirstName() + " " + newDoctor.getLastName());
 
                     // Batch Update atómico: todos los pacientes se actualizan en una sola operación
-                    userDao.batchUpdateFields(patientIds, campos);
+                    userDao.batchUpdateFields(patientIds, fields);
 
                     // Solo después de confirmar el batch, eliminamos al médico
                     userDao.delete(doctorId);
@@ -450,9 +450,9 @@ public class AdminController {
                     Platform.runLater(() -> {
                         // Actualizar la lista local sin recargar todo desde Firestore
                         for (User p : patients) {
-                            p.setAssignedDoctorId(nuevoMedico.getUid());
+                            p.setAssignedDoctorId(newDoctor.getUid());
                             p.setAssignedDoctorName(
-                                    nuevoMedico.getFirstName() + " " + nuevoMedico.getLastName());
+                                    newDoctor.getFirstName() + " " + newDoctor.getLastName());
                         }
                         usersObservableList.removeIf(u -> doctorId.equals(u.getUid()));
                         tableUsers.refresh();
@@ -461,7 +461,7 @@ public class AdminController {
                         refreshStats();
                         applyFilter();
                         lblStatus.setText(patients.size() + " paciente(s) reasignado(s) al Dr. "
-                                + nuevoMedico.getLastName() + ". Médico eliminado correctamente.");
+                                + newDoctor.getLastName() + ". Médico eliminado correctamente.");
                         lblStatus.setTextFill(Color.web("#4caf50"));
                     });
                 } catch (Exception e) {
@@ -622,18 +622,18 @@ public class AdminController {
                     }
 
                     // ComboBox con todos los médicos disponibles
-                    ComboBox<User> comboDoc = new ComboBox<>();
-                    comboDoc.setMaxWidth(Double.MAX_VALUE);
-                    comboDoc.setItems(FXCollections.observableArrayList(doctors));
+                    ComboBox<User> comboDoctor = new ComboBox<>();
+                    comboDoctor.setMaxWidth(Double.MAX_VALUE);
+                    comboDoctor.setItems(FXCollections.observableArrayList(doctors));
 
                     // Muestra el nombre completo de cada médico en la lista
-                    comboDoc.setCellFactory(lv -> new ListCell<User>() {
+                    comboDoctor.setCellFactory(lv -> new ListCell<User>() {
                         @Override protected void updateItem(User u, boolean empty) {
                             super.updateItem(u, empty);
                             setText(empty || u == null ? null : "Dr. " + u.getFirstName() + " " + u.getLastName());
                         }
                     });
-                    comboDoc.setButtonCell(new ListCell<User>() {
+                    comboDoctor.setButtonCell(new ListCell<User>() {
                         @Override protected void updateItem(User u, boolean empty) {
                             super.updateItem(u, empty);
                             setText(empty || u == null ? null : "Dr. " + u.getFirstName() + " " + u.getLastName());
@@ -645,13 +645,13 @@ public class AdminController {
                         doctors.stream()
                                .filter(d -> selectedUser.getAssignedDoctorId().equals(d.getUid()))
                                .findFirst()
-                               .ifPresent(comboDoc::setValue);
+                               .ifPresent(comboDoctor::setValue);
                     }
 
                     VBox content = new VBox(10,
                         new Label("Paciente: " + selectedUser.getFirstName() + " " + selectedUser.getLastName()),
                         new Label("Selecciona el médico a asignar:"),
-                        comboDoc
+                        comboDoctor
                     );
                     content.setStyle("-fx-padding: 10;");
                     content.getChildren().get(0).setStyle("-fx-text-fill: #222222; -fx-font-weight: bold;");
@@ -667,7 +667,7 @@ public class AdminController {
                     dialog.showAndWait().ifPresent(btn -> {
                         if (btn != ButtonType.OK) return;
 
-                        User chosenDoctor = comboDoc.getValue();
+                        User chosenDoctor = comboDoctor.getValue();
                         if (chosenDoctor == null) return;
 
                         // Actualizamos el paciente en Firestore con el nuevo médico

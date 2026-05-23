@@ -244,18 +244,18 @@ public class RecommendationsController {
             return;
         }
 
-        for (Recommendation nota : notes) {
-            String titulo = nota.getTitle() != null ? nota.getTitle() : "Nota médica";
-            String fecha  = nota.getGeneratedAt() != null
-                    ? nota.getGeneratedAt().toDate().toString().substring(0, 16) : "";
-            String msg    = nota.getMessage() != null ? nota.getMessage() : "";
+        for (Recommendation note : notes) {
+            String title = note.getTitle() != null ? note.getTitle() : "Nota médica";
+            String date  = note.getGeneratedAt() != null
+                    ? note.getGeneratedAt().toDate().toString().substring(0, 16) : "";
+            String msg   = note.getMessage() != null ? note.getMessage() : "";
 
             // Título de la nota en blanco resaltado
-            Label lblTitle = new Label(titulo);
+            Label lblTitle = new Label(title);
             lblTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #e8e8e8; -fx-font-size: 13px;");
 
             // Fecha en azul muted para no competir con el contenido
-            Label lblDate = new Label(fecha);
+            Label lblDate = new Label(date);
             lblDate.setStyle("-fx-text-fill: #7a9cc8; -fx-font-size: 10px;");
 
             // Contenido de la nota en gris claro, con salto de línea
@@ -636,32 +636,32 @@ public class RecommendationsController {
     // Guarda la nota que el médico escribió en txtNoteInput para el paciente seleccionado
     @FXML
     protected void onSaveDoctorNote() {
-        User paciente = comboPatients.getValue();
-        if (paciente == null || txtNoteInput == null) return;
-        String texto = txtNoteInput.getText().trim();
-        if (texto.isEmpty()) return;
+        User patient = comboPatients.getValue();
+        if (patient == null || txtNoteInput == null) return;
+        String noteText = txtNoteInput.getText().trim();
+        if (noteText.isEmpty()) return;
 
         // Armamos el objeto nota con todos sus datos antes de lanzar el hilo
-        Recommendation nota = new Recommendation();
-        nota.setPatientId  (paciente.getUid());
-        nota.setDoctorId   (loggedInDoctor.getUid());
-        nota.setType       ("note");
-        nota.setTitle      ("Nota del Dr. " + loggedInDoctor.getLastName());
-        nota.setMessage    (texto);
-        nota.setGeneratedAt(Timestamp.now());
-        nota.setIsRead     (false);
+        Recommendation newNote = new Recommendation();
+        newNote.setPatientId  (patient.getUid());
+        newNote.setDoctorId   (loggedInDoctor.getUid());
+        newNote.setType       ("note");
+        newNote.setTitle      ("Nota del Dr. " + loggedInDoctor.getLastName());
+        newNote.setMessage    (noteText);
+        newNote.setGeneratedAt(Timestamp.now());
+        newNote.setIsRead     (false);
 
         // Guardamos en Firebase en hilo de fondo para no bloquear la interfaz
         new Thread(() -> {
             try {
-                String nuevoId = recommendationDAO.createDocumentId();
-                nota.setId(nuevoId);
+                String newId = recommendationDAO.createDocumentId();
+                newNote.setId(newId);
                 // Aquí guardamos la nota en Firebase dentro de la colección "recommendations"
-                recommendationDAO.save(nuevoId, nota);
+                recommendationDAO.save(newId, newNote);
                 // Limpiamos el campo y recargamos con una sola consulta en el hilo de JavaFX
                 Platform.runLater(() -> {
                     txtNoteInput.clear();
-                    loadAllRecommendationsForPatient(paciente.getUid());
+                    loadAllRecommendationsForPatient(patient.getUid());
                 });
             } catch (Exception e) {
                 System.err.println("[RecommendationsController] Error al guardar nota: " + e.getMessage());
@@ -747,27 +747,27 @@ public class RecommendationsController {
                 new FileChooser.ExtensionFilter("Excel (*.xlsx)", "*.xlsx"));
 
         Stage stage = (Stage) comboPatients.getScene().getWindow();
-        File archivo = fc.showSaveDialog(stage);
-        if (archivo == null) return; // El usuario canceló el diálogo
+        File outputFile = fc.showSaveDialog(stage);
+        if (outputFile == null) return; // El usuario canceló el diálogo
 
         // Capturar el texto de diagnóstico actual en el hilo FX antes de entrar al hilo de fondo
-        final String diagnostico = txtRecommendations.getText();
+        final String diagnosisText = txtRecommendations.getText();
 
         new Thread(() -> {
             try {
                 // Recopilar todos los datos necesarios para las tres hojas
-                List<Metric>         metricas = getMetricsByPatient(selected.getUid());
+                List<Metric>         metrics  = getMetricsByPatient(selected.getUid());
                 List<Recommendation> recs     = getRecommendationsByPatient(selected.getUid());
-                String               alertas  = buildAlertsText(metricas);
+                String               alerts   = buildAlertsText(metrics);
 
                 // Generar y guardar el archivo Excel
-                generateExcel(archivo, diagnostico, alertas, metricas, recs);
+                generateExcel(outputFile, diagnosisText, alerts, metrics, recs);
 
                 Platform.runLater(() -> {
                     Alert ok = new Alert(Alert.AlertType.INFORMATION);
                     ok.setTitle("Exportación completada");
                     ok.setHeaderText(null);
-                    ok.setContentText("Reporte guardado correctamente:\n" + archivo.getAbsolutePath());
+                    ok.setContentText("Reporte guardado correctamente:\n" + outputFile.getAbsolutePath());
                     ok.showAndWait();
                 });
 
@@ -787,31 +787,31 @@ public class RecommendationsController {
     // Obtiene las recomendaciones clínicas (excluye notas manuales del médico)
     // del paciente indicado, ordenadas de más reciente a más antigua.
     private List<Recommendation> getRecommendationsByPatient(String patientId) throws Exception {
-        List<Recommendation> todas = recommendationDAO.getByField("patientId", patientId);
-        List<Recommendation> analisis = new ArrayList<>();
-        for (Recommendation r : todas) {
-            if (!"note".equals(r.getType())) analisis.add(r);
+        List<Recommendation> all = recommendationDAO.getByField("patientId", patientId);
+        List<Recommendation> analyses = new ArrayList<>();
+        for (Recommendation r : all) {
+            if (!"note".equals(r.getType())) analyses.add(r);
         }
-        Collections.sort(analisis, (a, b) -> {
+        Collections.sort(analyses, (a, b) -> {
             if (a.getGeneratedAt() == null && b.getGeneratedAt() == null) return 0;
             if (a.getGeneratedAt() == null) return 1;
             if (b.getGeneratedAt() == null) return -1;
             return b.getGeneratedAt().compareTo(a.getGeneratedAt());
         });
-        return analisis;
+        return analyses;
     }
 
     // Construye un texto con las alertas activas a partir de la última métrica del paciente.
     // Evalúa: presión arterial, glucosa, frecuencia cardíaca e IMC con los mismos umbrales
     // que usa generateAlgorithmicRecommendations(), para garantizar consistencia.
-    private String buildAlertsText(List<Metric> metricas) {
-        if (metricas == null || metricas.isEmpty()) return "Sin datos de métricas disponibles.";
-        Metric ultima = metricas.get(0); // Lista ya ordenada de más reciente a más antigua
+    private String buildAlertsText(List<Metric> metrics) {
+        if (metrics == null || metrics.isEmpty()) return "Sin datos de métricas disponibles.";
+        Metric latest = metrics.get(0); // Lista ya ordenada de más reciente a más antigua
         StringBuilder sb = new StringBuilder();
 
         // Presión arterial
-        if (ultima.getSystolic() != null && ultima.getDiastolic() != null) {
-            int sys = ultima.getSystolic(), dia = ultima.getDiastolic();
+        if (latest.getSystolic() != null && latest.getDiastolic() != null) {
+            int sys = latest.getSystolic(), dia = latest.getDiastolic();
             if (sys >= 180 || dia >= 120)
                 sb.append("• CRÍTICO — Hipertensión en crisis (")
                   .append(sys).append("/").append(dia).append(" mmHg)\n");
@@ -824,8 +824,8 @@ public class RecommendationsController {
         }
 
         // Glucosa
-        if (ultima.getGlucoseLevel() != null) {
-            double gluc = ultima.getGlucoseLevel();
+        if (latest.getGlucoseLevel() != null) {
+            double gluc = latest.getGlucoseLevel();
             if (gluc > 300)
                 sb.append("• CRÍTICO — Glucosa extrema (")
                   .append(gluc).append(" mg/dL) — riesgo de cetoacidosis\n");
@@ -836,8 +836,8 @@ public class RecommendationsController {
         }
 
         // Frecuencia cardíaca
-        if (ultima.getHeartRate() != null) {
-            int hr = ultima.getHeartRate();
+        if (latest.getHeartRate() != null) {
+            int hr = latest.getHeartRate();
             if (hr > 120)
                 sb.append("• ALERTA — Taquicardia (").append(hr).append(" lpm)\n");
             else if (hr < 50)
@@ -845,8 +845,8 @@ public class RecommendationsController {
         }
 
         // IMC
-        if (ultima.getBmi() != null) {
-            double bmi = ultima.getBmi();
+        if (latest.getBmi() != null) {
+            double bmi = latest.getBmi();
             if (bmi >= 35)
                 sb.append("• ALERTA — Obesidad severa (IMC: ").append(bmi).append(")\n");
             else if (bmi >= 30)
@@ -862,76 +862,76 @@ public class RecommendationsController {
     //   Hoja 1 "Análisis del Paciente" — resumen diagnóstico + alertas activas
     //   Hoja 2 "Historial de Métricas" — tabla con todas las lecturas registradas
     //   Hoja 3 "Recomendaciones"       — historial de análisis clínicos guardados en Firestore
-    private void generateExcel(File archivo, String diagnostico, String alertas,
-                                List<Metric> metricas, List<Recommendation> recs) throws Exception {
+    private void generateExcel(File outputFile, String diagnosisText, String alertsText,
+                                List<Metric> metrics, List<Recommendation> recs) throws Exception {
 
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
 
             // ── Estilo compartido para encabezados de columna ──────────────
-            CellStyle estiloEncabezado = workbook.createCellStyle();
-            Font fuenteEncabezado = workbook.createFont();
-            fuenteEncabezado.setBold(true);
-            fuenteEncabezado.setColor(IndexedColors.WHITE.getIndex());
-            fuenteEncabezado.setFontHeightInPoints((short) 11);
-            estiloEncabezado.setFont(fuenteEncabezado);
-            estiloEncabezado.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
-            estiloEncabezado.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            estiloEncabezado.setBorderBottom(BorderStyle.THIN);
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerFont.setFontHeightInPoints((short) 11);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
 
             // ── Estilo para el título principal de cada hoja ───────────────
-            CellStyle estiloTitulo = workbook.createCellStyle();
-            Font fuenteTitulo = workbook.createFont();
-            fuenteTitulo.setBold(true);
-            fuenteTitulo.setFontHeightInPoints((short) 14);
-            estiloTitulo.setFont(fuenteTitulo);
+            CellStyle titleStyle = workbook.createCellStyle();
+            Font titleFont = workbook.createFont();
+            titleFont.setBold(true);
+            titleFont.setFontHeightInPoints((short) 14);
+            titleStyle.setFont(titleFont);
 
             // ──────────────────────────────────────────────────────────────
             // HOJA 1: Análisis del Paciente
             // ──────────────────────────────────────────────────────────────
-            Sheet hoja1 = workbook.createSheet("Análisis del Paciente");
-            int fila = 0;
+            Sheet sheet1 = workbook.createSheet("Análisis del Paciente");
+            int rowIndex = 0;
 
             // Título de la hoja
-            Row filaTitulo = hoja1.createRow(fila++);
-            Cell celdaTitulo = filaTitulo.createCell(0);
-            celdaTitulo.setCellValue("REPORTE CLÍNICO — HealthTrack");
-            celdaTitulo.setCellStyle(estiloTitulo);
+            Row titleRow = sheet1.createRow(rowIndex++);
+            Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue("REPORTE CLÍNICO — HealthTrack");
+            titleCell.setCellStyle(titleStyle);
 
             // Fecha de generación del reporte
-            hoja1.createRow(fila++).createCell(0).setCellValue(
+            sheet1.createRow(rowIndex++).createCell(0).setCellValue(
                     "Generado el: " + LocalDateTime.now()
                             .format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
-            fila++; // Fila en blanco separadora
+            rowIndex++; // Fila en blanco separadora
 
             // Sección: Diagnóstico y Análisis Clínico
-            Cell celdaDiagHeader = hoja1.createRow(fila++).createCell(0);
-            celdaDiagHeader.setCellValue("DIAGNÓSTICO Y ANÁLISIS CLÍNICO");
-            celdaDiagHeader.setCellStyle(estiloEncabezado);
+            Cell diagHeaderCell = sheet1.createRow(rowIndex++).createCell(0);
+            diagHeaderCell.setCellValue("DIAGNÓSTICO Y ANÁLISIS CLÍNICO");
+            diagHeaderCell.setCellStyle(headerStyle);
 
-            String textoAnalisis = (diagnostico != null && !diagnostico.isEmpty())
-                    ? diagnostico : "No se ha generado ningún análisis para este paciente.";
-            for (String linea : textoAnalisis.split("\n")) {
-                hoja1.createRow(fila++).createCell(0).setCellValue(linea);
+            String analysisContent = (diagnosisText != null && !diagnosisText.isEmpty())
+                    ? diagnosisText : "No se ha generado ningún análisis para este paciente.";
+            for (String line : analysisContent.split("\n")) {
+                sheet1.createRow(rowIndex++).createCell(0).setCellValue(line);
             }
 
-            fila++; // Fila en blanco separadora
+            rowIndex++; // Fila en blanco separadora
 
             // Sección: Alertas Detectadas
-            Cell celdaAlertasHeader = hoja1.createRow(fila++).createCell(0);
-            celdaAlertasHeader.setCellValue("ALERTAS DETECTADAS");
-            celdaAlertasHeader.setCellStyle(estiloEncabezado);
+            Cell alertsHeaderCell = sheet1.createRow(rowIndex++).createCell(0);
+            alertsHeaderCell.setCellValue("ALERTAS DETECTADAS");
+            alertsHeaderCell.setCellStyle(headerStyle);
 
-            for (String linea : alertas.split("\n")) {
-                hoja1.createRow(fila++).createCell(0).setCellValue(linea);
+            for (String line : alertsText.split("\n")) {
+                sheet1.createRow(rowIndex++).createCell(0).setCellValue(line);
             }
 
-            hoja1.setColumnWidth(0, 90 * 256); // Columna ancha para texto largo
+            sheet1.setColumnWidth(0, 90 * 256); // Columna ancha para texto largo
 
             // ──────────────────────────────────────────────────────────────
             // HOJA 2: Historial de Métricas
             // ──────────────────────────────────────────────────────────────
-            Sheet hoja2 = workbook.createSheet("Historial de Métricas");
-            String[] columnasMetricas = {
+            Sheet sheet2 = workbook.createSheet("Historial de Métricas");
+            String[] metricColumns = {
                 "Fecha",
                 "Sistólica (mmHg)",
                 "Diastólica (mmHg)",
@@ -942,68 +942,68 @@ public class RecommendationsController {
             };
 
             // Fila de encabezados
-            Row filaEncMetrica = hoja2.createRow(0);
-            for (int i = 0; i < columnasMetricas.length; i++) {
-                Cell c = filaEncMetrica.createCell(i);
-                c.setCellValue(columnasMetricas[i]);
-                c.setCellStyle(estiloEncabezado);
+            Row metricHeaderRow = sheet2.createRow(0);
+            for (int i = 0; i < metricColumns.length; i++) {
+                Cell c = metricHeaderRow.createCell(i);
+                c.setCellValue(metricColumns[i]);
+                c.setCellStyle(headerStyle);
             }
 
             // Filas de datos — una fila por cada lectura registrada
-            int filaDato = 1;
-            for (Metric m : metricas) {
-                Row fila2 = hoja2.createRow(filaDato++);
-                String fecha = m.getTimestamp() != null
+            int dataRowIndex = 1;
+            for (Metric m : metrics) {
+                Row dataRow = sheet2.createRow(dataRowIndex++);
+                String date = m.getTimestamp() != null
                         ? m.getTimestamp().toDate().toString().substring(0, 16) : "";
-                fila2.createCell(0).setCellValue(fecha);
-                fila2.createCell(1).setCellValue(m.getSystolic()     != null ? m.getSystolic()     : 0);
-                fila2.createCell(2).setCellValue(m.getDiastolic()    != null ? m.getDiastolic()    : 0);
-                fila2.createCell(3).setCellValue(m.getHeartRate()    != null ? m.getHeartRate()    : 0);
-                fila2.createCell(4).setCellValue(m.getGlucoseLevel() != null ? m.getGlucoseLevel() : 0.0);
-                fila2.createCell(5).setCellValue(m.getWeight()       != null ? m.getWeight()       : 0.0);
-                fila2.createCell(6).setCellValue(m.getBmi()          != null ? m.getBmi()          : 0.0);
+                dataRow.createCell(0).setCellValue(date);
+                dataRow.createCell(1).setCellValue(m.getSystolic()     != null ? m.getSystolic()     : 0);
+                dataRow.createCell(2).setCellValue(m.getDiastolic()    != null ? m.getDiastolic()    : 0);
+                dataRow.createCell(3).setCellValue(m.getHeartRate()    != null ? m.getHeartRate()    : 0);
+                dataRow.createCell(4).setCellValue(m.getGlucoseLevel() != null ? m.getGlucoseLevel() : 0.0);
+                dataRow.createCell(5).setCellValue(m.getWeight()       != null ? m.getWeight()       : 0.0);
+                dataRow.createCell(6).setCellValue(m.getBmi()          != null ? m.getBmi()          : 0.0);
             }
 
             // Ajustar ancho automático de todas las columnas
-            for (int i = 0; i < columnasMetricas.length; i++) hoja2.autoSizeColumn(i);
+            for (int i = 0; i < metricColumns.length; i++) sheet2.autoSizeColumn(i);
 
             // ──────────────────────────────────────────────────────────────
             // HOJA 3: Recomendaciones
             // ──────────────────────────────────────────────────────────────
-            Sheet hoja3 = workbook.createSheet("Recomendaciones");
-            String[] columnasRec = { "Fecha", "Tipo", "Título", "Mensaje" };
+            Sheet sheet3 = workbook.createSheet("Recomendaciones");
+            String[] recColumns = { "Fecha", "Tipo", "Título", "Mensaje" };
 
             // Fila de encabezados
-            Row filaEncRec = hoja3.createRow(0);
-            for (int i = 0; i < columnasRec.length; i++) {
-                Cell c = filaEncRec.createCell(i);
-                c.setCellValue(columnasRec[i]);
-                c.setCellStyle(estiloEncabezado);
+            Row recHeaderRow = sheet3.createRow(0);
+            for (int i = 0; i < recColumns.length; i++) {
+                Cell c = recHeaderRow.createCell(i);
+                c.setCellValue(recColumns[i]);
+                c.setCellStyle(headerStyle);
             }
 
             // Filas de datos — un análisis por fila
-            int filaRec = 1;
+            int recRowIndex = 1;
             for (Recommendation rec : recs) {
-                Row filaR = hoja3.createRow(filaRec++);
-                String fecha = rec.getGeneratedAt() != null
+                Row recDataRow = sheet3.createRow(recRowIndex++);
+                String date = rec.getGeneratedAt() != null
                         ? rec.getGeneratedAt().toDate().toString().substring(0, 16) : "";
-                filaR.createCell(0).setCellValue(fecha);
-                filaR.createCell(1).setCellValue(rec.getType()  != null ? rec.getType()  : "");
-                filaR.createCell(2).setCellValue(rec.getTitle() != null ? rec.getTitle() : "");
+                recDataRow.createCell(0).setCellValue(date);
+                recDataRow.createCell(1).setCellValue(rec.getType()  != null ? rec.getType()  : "");
+                recDataRow.createCell(2).setCellValue(rec.getTitle() != null ? rec.getTitle() : "");
 
                 // Truncar mensajes muy largos para no saturar la celda de Excel
                 String msg = rec.getMessage() != null ? rec.getMessage() : "";
-                filaR.createCell(3).setCellValue(
+                recDataRow.createCell(3).setCellValue(
                         msg.length() > 500 ? msg.substring(0, 500) + "..." : msg);
             }
 
             // Autoajustar las primeras tres columnas; la cuarta (Mensaje) queda fija
-            for (int i = 0; i < 3; i++) hoja3.autoSizeColumn(i);
-            hoja3.setColumnWidth(3, 60 * 256);
+            for (int i = 0; i < 3; i++) sheet3.autoSizeColumn(i);
+            sheet3.setColumnWidth(3, 60 * 256);
 
             // ── Escribir el workbook en disco ──────────────────────────────
-            try (FileOutputStream salida = new FileOutputStream(archivo)) {
-                workbook.write(salida);
+            try (FileOutputStream fileOutput = new FileOutputStream(outputFile)) {
+                workbook.write(fileOutput);
             }
         }
     }

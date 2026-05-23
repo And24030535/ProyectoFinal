@@ -250,7 +250,7 @@ public class MetricsController {
         // Iteración inversa para mostrar los datos más antiguos a la izquierda
         for (int i = history.size() - 1; i >= 0; i--) {
             Metric m = history.get(i);
-            if (m.getSystolic() != null && m.getDiastolic() != null) {
+            if (m.getSystolic() != null && m.getDiastolic() != null && m.getTimestamp() != null) {
                 String label = m.getTimestamp().toDate().toString().substring(4, 10);
                 systolicSeries.getData().add(new XYChart.Data<>(label, m.getSystolic()));
                 diastolicSeries.getData().add(new XYChart.Data<>(label, m.getDiastolic()));
