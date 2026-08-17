@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.UserRecord;
 import com.itc.healthtrack.dao.GenericDAO;
 import com.itc.healthtrack.models.User;
+import com.itc.healthtrack.services.UserService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -12,7 +13,6 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,6 +28,7 @@ public class PatientsController {
 
     // dao para guardar y leer pacientes de firestore
     private final GenericDAO<User> userDao = new GenericDAO<>(User.class, "users");
+    private final UserService userService = new UserService();
 
     private final ObservableList<User> patientsObservableList = FXCollections.observableArrayList();
 
@@ -60,15 +61,7 @@ public class PatientsController {
     private void loadPatients() {
         new Thread(() -> {
             try {
-                List<User> all = userDao.getByField("role", "patient");
-                List<User> visible = new ArrayList<>();
-                for (User p : all) {
-                    if ("admin".equals(loggedInDoctor.getRole())) {
-                        visible.add(p);
-                    } else if (loggedInDoctor.getUid() != null && loggedInDoctor.getUid().equals(p.getAssignedDoctorId())) {
-                        visible.add(p);
-                    }
-                }
+                List<User> visible = userService.getPatientsForUser(loggedInDoctor);
                 Platform.runLater(() -> {
                     patientsObservableList.clear();
                     patientsObservableList.addAll(visible);
